@@ -96,7 +96,7 @@ Connect the machine to Bringup Studio, and every run the MCP starts streams ther
 | `stop_design` | End a run that stays up |
 | `get_pictures` | Pictures to show the user: the newest board's 3D picture (as an image) with its PCB and schematic SVGs, the case's STL, and with `stills: true` a robot's or arm's 3D assembly stills (rendered into `<run>/pictures`, about 20 s with the case tools); every file is listed by path |
 | `continue_design` | Continue a design whose run has ended: a new run starts from its contract (the latest, or `revision` to branch from an earlier one), settles as it was, then takes `request_change`. Mock by default; a real-model continue needs `realModels` and an approved plan, like `start_design` |
-| `export_package` | Write the manufacturing package (fabrication files, BOM, firmware, printed parts). Refused for an unfinished design unless `force` is set. One board of a system at a time (`board`). Needs the toolchain |
+| `export_package` | Write the manufacturing package (fabrication files, BOM, firmware, printed parts: a case and lid, or a robot's or arm's parts, with assembly pictures). Refused for an unfinished design unless `force` is set. One board of a system at a time (`board`). Needs the toolchain |
 
 For a system run, `read_contract`, `get_report`, `list_events`, `list_part_refs`, `request_change` and `export_package`
 take `board` (default `main`); `design_status` names the boards.

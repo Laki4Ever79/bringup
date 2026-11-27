@@ -25,7 +25,7 @@ Mozaik Cloud.
 |---|---|
 | The engine, the agents, every check, the CLI and the MCP server | The live 3D robot and its simulation in 3D |
 | Every file a design produces: KiCad project, Gerbers, BOM, pick-and-place, STL/STEP, firmware, URDF and ROS 2, the report | Editing on the design itself: click a part, change it, watch the change ripple |
-| Still pictures of the board and the robot in the build package | Logs and debugging: the timeline, why each change happened, every agent's trace |
+| Still pictures of the board, its case and the robot in the build package | Logs and debugging: the timeline, why each change happened, every agent's trace |
 | | Run history, sharing and teams, with nothing to install |
 
 ## Quick start
@@ -91,7 +91,7 @@ From a short brief (a board: [the climate logger](briefs/logger.md); a robot: [t
 - **An entire robot**: the chassis and mounts as printable parts, the motors, battery and sensors chosen and checked,
   the robot's own firmware driving a physics model of it in simulation, and a ROS 2 package.
 - **Firmware** that compiles against the real pin map.
-- **A parts list** with live stock and prices, and a build package with the assembly steps.
+- **A parts list** with live stock and prices, and a build package with the assembly steps: fab files, firmware, and the printed case and lid (or a robot's parts) as STL and STEP, with pictures.
 - **Checks** across all of it: wiring, power, motor and battery currents, parts that collide, the competition's rules.
 
 ## Robots

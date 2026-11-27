@@ -2,13 +2,13 @@
 // order; nothing here orders). It rebuilds every artifact on today's code from the contract alone:
 //   fab/       JLCPCB gerbers, BOM and CPL, checked complete against the contract's parts
 //   parts.md   the board's LCSC parts with today's stock and unit price, and the bought robot parts with shop links
-//   printed/   the chassis STLs (and any clamp or mast sections); an arm's printed parts as STL and STEP
+//   printed/   a plain product's case and lid (STL and STEP); a robot's chassis STLs (and any clamp or mast sections); an arm's printed parts as STL and STEP
 //   ros/       an arm's URDF and ros2_control controllers (src/ros/urdf.ts armUrdf), with its printed links' masses
 //   firmware/  the built firmware and how to flash it
 //   assembly.md, bringup.md (bench bring-up), README.md (totals and what's missing)
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { basename, join } from "node:path"
-import type { ContractSnapshot } from "../contract/types.ts"
+import { enclosureMode, type ContractSnapshot } from "../contract/types.ts"
 import { checkConsistency } from "../contract/consistency.ts"
 import type { Env } from "../tools/env.ts"
 import { buildBoard } from "../tools/board.ts"
@@ -19,7 +19,8 @@ import { loadCatalog, lookupLcsc } from "../tools/parts-search.ts"
 import { jlcSwaps, type JlcClass } from "./jlc-swaps.ts"
 import { checkRobotParts, money, robotPartLines, robotPartNotes } from "../tools/robot-parts.ts"
 import { writeBench } from "../report.ts"
-import { armPictures, assemblyPictures } from "./assembly-pictures.ts"
+import { armPictures, assemblyPictures, casePictures } from "./assembly-pictures.ts"
+import { buildEnclosure, enclosureSpec } from "../tools/enclosure.ts"
 import { armBuildChecks, armWithLinks, buildArm, type ArmArtifact } from "../tools/arm.ts"
 import { armControllersYaml, armUrdf } from "../ros/urdf.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
@@ -172,6 +173,15 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		} else missing.push(`the arm's printed parts didn't build: ${a.reason}`)
 	}
 
+	// 3c. A plain product's case (requirements.enclosure "case", the default; a robot's body is its chassis): case and lid
+	// as STL to print and STEP to edit, from py/enclosure.py as the run builds them. Before, the package of the most
+	// common design, a board in a case, shipped no case at all (27 Nov 2026).
+	const kase = await packageCase(opts.python, opts.root, join(work, "enclosure"), outDir, s, rev, log)
+	const caseDir = kase.dir
+	stls.push(...kase.stls)
+	findings.push(...kase.findings)
+	missing.push(...kase.missing)
+
 	// 4. The firmware.
 	log("firmware: building")
 	const fw = await buildFirmware(opts.pio, opts.root, join(work, "firmware"), s, rev)
@@ -188,10 +198,12 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		? await assemblyPictures(opts.python, opts.root, join(work, "chassis"), outDir, log)
 		: arm
 			? await armPictures(opts.python, opts.root, join(arm.dir, "posed"), outDir, log)
-			: { files: [], note: s.values.mechanics ? "no assembly pictures: the chassis didn't build" : s.values.arm ? "no assembly pictures: the arm's parts didn't build" : null }
+			: caseDir
+				? await casePictures(opts.python, opts.root, caseDir, outDir, log)
+				: { files: [], note: s.values.mechanics ? "no assembly pictures: the chassis didn't build" : s.values.arm ? "no assembly pictures: the arm's parts didn't build" : null }
 	writeFileSync(
 		join(outDir, "assembly.md"),
-		assemblyOrder(s, [...stls.map((f) => basename(f)), ...armFiles.filter((f) => f.endsWith(".stl"))]) + (pictures.files.length ? `\n## Pictures\n\nThe robot after each step, exploded, and from the top and the side (${arm ? "the arm's printed parts built here, at rest, with its servos" : "the chassis built here, with the bought parts where they go"}):\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
+		assemblyOrder(s, [...stls.map((f) => basename(f)), ...armFiles.filter((f) => f.endsWith(".stl"))]) + (pictures.files.length ? `\n## Pictures\n\n${caseDir ? "The case, the board in it and the lid on, exploded, and from the top and the side (the case built here, the board on its standoffs)" : `The robot after each step, exploded, and from the top and the side (${arm ? "the arm's printed parts built here, at rest, with its servos" : "the chassis built here, with the bought parts where they go"})`}:\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
 	)
 	const partsMd = [
 		`# Parts (prices and stock checked ${new Date().toISOString().slice(0, 10)})`,
@@ -252,6 +264,27 @@ export function copyRosWorkspace(chassisDir: string, outDir: string): boolean {
 	return true
 }
 
+// A plain product's case into <package>/printed (case and lid, STL and STEP), with its print check's findings. Nothing
+// for a robot (its chassis is its body), an arm, or a design without a case of ours (requirements.enclosure none/own).
+export async function packageCase(python: string, root: string, dir: string, outDir: string, s: ContractSnapshot, rev: number, log: (m: string) => void = () => {}): Promise<{ dir: string | null; stls: string[]; findings: string[]; missing: string[] }> {
+	const none = { dir: null, stls: [], findings: [], missing: [] }
+	if (s.values.mechanics || s.values.arm || enclosureMode(s.values) !== "case") return none
+	log("case: building")
+	try {
+		await buildEnclosure(python, root, dir, s, rev)
+	} catch (e) {
+		return { ...none, missing: [`the case didn't build: ${(e as Error).message}`] }
+	}
+	mkdirSync(join(outDir, "printed"), { recursive: true })
+	const stls: string[] = []
+	for (const f of ["case.stl", "case.step", "lid.stl", "lid.step"].filter((x) => existsSync(join(dir, x)))) {
+		copyFileSync(join(dir, f), join(outDir, "printed", f))
+		if (f.endsWith(".stl")) stls.push(join(dir, f))
+	}
+	const print = existsSync(join(dir, "print.json")) ? (JSON.parse(readFileSync(join(dir, "print.json"), "utf8")) as { ok: boolean; issues: string[] }) : null
+	return { dir, stls, findings: print && !print.ok ? print.issues.map((x) => `case print check: ${x}`) : [], missing: [] }
+}
+
 export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
 	const v = s.values, m = v.mechanics
 	const parts = v.parts ?? []
@@ -272,6 +305,15 @@ export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
 			...(m.safety?.estop ? [`Fit the emergency stop (${m.safety.estop.part}) in its deck and plug it into ${m.safety.estop.connector}: it breaks the motors' supply.`] : []),
 			...(m.safety?.start ? [`Plug the start cord into ${m.safety.start.connector}.`] : []),
 			"Plug the battery in last, wheels off the floor, and run the rest of bringup.md (motors, encoders, sensor, then a first drive).",
+		)
+	}
+	// A plain product's case (printed/case.stl, lid.stl).
+	if (!m && !v.arm && stls.includes("case.stl")) {
+		const spec = enclosureSpec(s) as { standoff?: { pilotMm?: number } }
+		steps.push(
+			`Print ${stls.filter((f) => f === "case.stl" || f === "lid.stl").join(" and ")} from printed/ in PLA: the case open side up, the lid plate down, as exported. The STEP files beside them are the same parts for editing.`,
+			`Fasten the board on the case's standoffs, connectors to their cutouts, with self-tapping screws for the ${spec.standoff?.pilotMm ?? 1.6} mm pilot holes (M2 x 5 mm).`,
+			"Run bringup.md's checks once more in the case, then press the lid on.",
 		)
 	}
 	const a = v.arm
