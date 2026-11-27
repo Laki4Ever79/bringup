@@ -94,6 +94,7 @@ Connect the machine to Bringup Studio, and every run the MCP starts streams ther
 | `list_part_refs` | The printed features a change can name: each opening, hole, tab and standoff of the case; each standoff, motor mount, rail and bracket of the chassis. Each one comes with its place and the line of code that makes it |
 | `request_change` | Change one thing in a running design ("make it 50 mm wide"). `ref` names the printed feature the change is about; `board` picks a system's board |
 | `stop_design` | End a run that stays up |
+| `get_pictures` | Pictures to show the user: the newest board's 3D picture (as an image) with its PCB and schematic SVGs, the case's STL, and with `stills: true` a robot's or arm's 3D assembly stills (rendered into `<run>/pictures`, about 20 s with the case tools); every file is listed by path |
 | `continue_design` | Continue a design whose run has ended: a new run starts from its contract (the latest, or `revision` to branch from an earlier one), settles as it was, then takes `request_change`. Mock by default; a real-model continue needs `realModels` and an approved plan, like `start_design` |
 | `export_package` | Write the manufacturing package (fabrication files, BOM, firmware, printed parts). Refused for an unfinished design unless `force` is set. One board of a system at a time (`board`). Needs the toolchain |
 

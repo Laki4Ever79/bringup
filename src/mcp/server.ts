@@ -1,10 +1,11 @@
 import { providerProblem } from "../inference/providers.ts"
 import { continueSeed } from "../runner/continue.ts"
+import { armPictures, assemblyPictures } from "../package/assembly-pictures.ts"
 import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { readFile, realpath, stat } from "node:fs/promises"
-import { join, sep } from "node:path"
+import { basename, join, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describeDomain, installDomain, type Domain } from "../setup/domains.ts"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
@@ -551,6 +552,64 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			if (!kill) return fail(runs.has(runId) ? `run ${runId} has already ended (${runs.get(runId)!.status})` : `run ${runId} wasn't started by this server`)
 			kill()
 			return ok({ runId, stopping: true })
+		},
+	)
+
+	server.registerTool(
+		"get_pictures",
+		{
+			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true a robot's or arm's 3D stills (needs the case tools; takes a minute). Every file is also listed by path.",
+			inputSchema: {
+				runId: z.string(),
+				board: BOARD,
+				stills: z.boolean().optional().describe("Render a robot's or arm's 3D stills into <run>/pictures (py/stills.py, the case tools). Default false."),
+			},
+		},
+		async ({ runId, board, stills }) => {
+			const r = await runDir(runId)
+			if ("error" in r) return fail(r.error)
+			const b = boardDir(r.dir, runId, board)
+			if ("error" in b) return fail(b.error)
+			const newest = (dir: string, has: string): string | null => {
+				if (!existsSync(dir)) return null
+				const revs = readdirSync(dir).map((n) => /^rev-(\d+)$/.exec(n)).filter((m): m is RegExpExecArray => m !== null).map((m) => Number(m[1])).sort((x, y) => y - x)
+				const rev = revs.find((n) => existsSync(join(dir, `rev-${n}`, has)))
+				return rev === undefined ? null : join(dir, `rev-${rev}`)
+			}
+			const files: { what: string; path: string }[] = []
+			const notes: string[] = []
+			const boardRev = newest(join(b.dir, "board"), "board.png") ?? newest(join(b.dir, "board"), "board-pcb.svg")
+			if (boardRev) {
+				for (const [f, what] of [["board.png", "board, 3D"], ["board-pcb.svg", "PCB layout"], ["board-schematic.svg", "schematic"]] as const)
+					if (existsSync(join(boardRev, f))) files.push({ what, path: join(boardRev, f) })
+			} else notes.push("no board pictures: the board wasn't built (`npx bringup-mcp setup board`, after your user says yes)")
+			const caseRev = newest(join(b.dir, "enclosure"), "case.stl")
+			if (caseRev) files.push({ what: "case (STL, open in a 3D viewer or slicer)", path: join(caseRev, "case.stl") })
+			if (stills) {
+				const env = await (deps.detect ?? (() => detectEnvironment(root)))()
+				const chassis = newest(join(b.dir, "chassis"), "chassis.stl")
+				const arm = newest(join(b.dir, "arm"), join("arm", "posed", "groups.json"))
+				const out = join(b.dir, "pictures")
+				if (!env.python) notes.push("no 3D stills: they need the case tools (`npx bringup-mcp setup case`, after your user says yes)")
+				else if (!chassis && !arm) notes.push("no 3D stills: stills are drawn for a robot's chassis or an arm, and this design has neither built")
+				else {
+					const p = chassis ? await assemblyPictures(env.python, root, chassis, out) : await armPictures(env.python, root, join(arm!, "arm", "posed"), out)
+					if (p.note) notes.push(p.note)
+					for (const f of p.files) files.push({ what: `3D still: ${basename(f, ".png").replace(/[-_]/g, " ")}`, path: join(out, f) })
+				}
+			}
+			// The PNGs themselves, so a client that shows images can put them in front of the user: the board and the
+			// finished robot (the last assembly step), each at most 2 MB.
+			const pngs = files.filter((f) => f.path.endsWith(".png"))
+			const steps = pngs.filter((f) => /[\\/]step-\d+[^\\/]*\.png$/.test(f.path))
+			const finished = steps.length ? steps.reduce((x, y) => (Number(/step-(\d+)/.exec(y.path)![1]) > Number(/step-(\d+)/.exec(x.path)![1]) ? y : x)) : pngs.length > 1 ? pngs[pngs.length - 1] : undefined
+			const shown = [pngs[0], finished].filter((f): f is { what: string; path: string } => Boolean(f) && statSync(f!.path).size <= 2_000_000)
+			return {
+				content: [
+					{ type: "text" as const, text: JSON.stringify({ runId, files, ...(notes.length ? { notes } : {}) }, null, 2) },
+					...shown.map((f) => ({ type: "image" as const, data: readFileSync(f.path).toString("base64"), mimeType: "image/png" })),
+				],
+			}
 		},
 	)
 

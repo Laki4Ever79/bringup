@@ -50,7 +50,8 @@ async function connect(launch: Launch, outRoot = tempDir()) {
 		const text = res.content?.[0]?.text ?? ""
 		return { isError: res.isError === true, text, json: () => JSON.parse(text) }
 	}
-	return { call, outRoot, close: () => client.close() }
+	const raw = (name: string, args: Record<string, unknown>) => client.callTool({ name, arguments: args })
+	return { call, raw, outRoot, close: () => client.close() }
 }
 
 async function until(check: () => Promise<boolean>, ms = 2000) {
@@ -389,7 +390,7 @@ test("bin/bringup-mcp.js speaks MCP on stdio: handshake, every tool listed, safe
 		assert.match(instructions, /start_design[\s\S]*design_status[\s\S]*run_summary/)
 		assert.match(instructions, /free/)
 		assert.match(instructions, /ask the user first/)
-		assert.deepEqual(names, ["approve_plan", "continue_design", "design_status", "export_package", "get_report", "list_events", "list_part_refs", "list_starters", "plan_design", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
+		assert.deepEqual(names, ["approve_plan", "continue_design", "design_status", "export_package", "get_pictures", "get_report", "list_events", "list_part_refs", "list_starters", "plan_design", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
 		const refused: any = await client.callTool({ name: "start_design", arguments: { brief: "x", mock: false } })
 		assert.equal(refused.isError, true)
 	} finally {
@@ -601,6 +602,37 @@ test("continue_design starts a new run from an ended one's contract (latest or a
 		const paid = await mcp.call("continue_design", { runId: "old-run", mock: false })
 		assert.equal(paid.isError, true)
 		stub.release()
+	} finally {
+		await mcp.close()
+	}
+})
+
+test("get_pictures returns the newest board's 3D picture as an image and lists every picture by path", async () => {
+	const outRoot = tempDir()
+	const dir = join(outRoot, "pics-run")
+	for (const rev of [2, 3]) mkdirSync(join(dir, "board", `rev-${rev}`), { recursive: true })
+	mkdirSync(join(dir, "enclosure", "rev-3"), { recursive: true })
+	writeFileSync(join(dir, "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
+	const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex")
+	writeFileSync(join(dir, "board", "rev-2", "board.png"), png)
+	writeFileSync(join(dir, "board", "rev-3", "board.png"), png)
+	writeFileSync(join(dir, "board", "rev-3", "board-pcb.svg"), "<svg/>")
+	writeFileSync(join(dir, "enclosure", "rev-3", "case.stl"), "solid case")
+	const mcp = await connect(stubRun().launch, outRoot)
+	try {
+		const result: any = await mcp.raw("get_pictures", { runId: "pics-run" })
+		const listed = JSON.parse(result.content[0].text)
+		assert.deepEqual(listed.files.map((f: any) => f.path), [join(dir, "board", "rev-3", "board.png"), join(dir, "board", "rev-3", "board-pcb.svg"), join(dir, "enclosure", "rev-3", "case.stl")])
+		assert.equal(result.content[1].type, "image")
+		assert.equal(result.content[1].mimeType, "image/png")
+		assert.equal(result.content[1].data, png.toString("base64"))
+		// A design with no board built says how to get one; stills without a robot or arm say why there are none.
+		mkdirSync(join(outRoot, "bare"))
+		writeFileSync(join(outRoot, "bare", "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
+		const bare = JSON.parse((await mcp.call("get_pictures", { runId: "bare", stills: true })).text)
+		assert.deepEqual(bare.files, [])
+		assert.match(bare.notes.join(" "), /setup board/)
+		assert.match(bare.notes.join(" "), /robot's chassis or an arm/)
 	} finally {
 		await mcp.close()
 	}
