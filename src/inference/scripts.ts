@@ -10,6 +10,7 @@ import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from ".
 import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { Part } from "../contract/types.ts"
+import { isCncPlug } from "../cnc/wiring-auto.ts"
 import { parseSwap } from "../tools/sourcing.ts"
 import { armLinksForReach, armTargetsFromRequest, mechanicsFromRequest, partsAfterSwap } from "../runner/request-map.ts"
 import { parseMoves, type PartMove, type Release } from "../board-edit/board-move.ts"
@@ -243,6 +244,10 @@ export const CNC_FLUIDNC_DESIGN: typeof LOGGER_DESIGN = {
 	}),
 	parts: CNC_DESIGN.parts!.map((p) => (p.role === "mcu" ? catalogPart("ESP32-WROOM-32E", p.ref) : p)),
 }
+// The CNC's parts as an agent writes them: no plugs, no nets but the MCU's. The contract tools add the plugs the machine
+// needs and wire the rest (cnc/wiring-auto.ts), so the mock proves that code, not the hand-written plugs and nets
+// CNC_DESIGN keeps as the tests' fixture (docs/cnc.md gap 2).
+const withoutCncWiring = (parts: Part[]) => parts.filter((p) => !isCncPlug(p)).map((p) => (p.role === "mcu" || !p.nets ? p : (({ nets: _n, ...rest }) => rest as Part)(p)))
 const isCnc = () => !!state().contract.get("cncTargets") || CNC_BRIEF.test(state().contract.get("requirements")?.summary ?? "")
 const isCncFluidnc = () => isCnc() && /\bESP32\b/.test(state().contract.get("requirements")?.summary ?? "")
 const isStm32 = () => /\bSTM32\b/.test(state().contract.get("requirements")?.summary ?? "")
@@ -1138,13 +1143,13 @@ export function mockScripts(): Record<string, Script> {
 				return stepsTaken(items) === 0 && id ? [toolCall("decide_change", { proposalId: id, approve: true, reason: "fits the catalog" })] : say("decided")
 			}
 			// The logger's parts, plus the microphone while the model needs one (rev 11 of the first wake-word run dropped it).
-			const base = hat ? hat.parts : isArm() ? ARM_BOARD.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover4() ? ROVER4_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : isCncFluidnc() ? CNC_FLUIDNC_DESIGN.parts : isCnc() ? CNC_DESIGN.parts : LOGGER_DESIGN.parts
+			const base = hat ? hat.parts : isArm() ? ARM_BOARD.parts : isEurobot() ? EUROBOT_BOARD.parts : isRover4() ? ROVER4_BOARD.parts : isRover() ? ROVER_BOARD.parts : isStm32() ? STM32_LOGGER_DESIGN.parts : isCncFluidnc() ? withoutCncWiring(CNC_FLUIDNC_DESIGN.parts!) : isCnc() ? withoutCncWiring(CNC_DESIGN.parts!) : LOGGER_DESIGN.parts
 			const wanted = withSwaps(state().contract.get("model")?.sensor === "microphone" ? [...base, MIC_PART] : base)
 			if (stepsTaken(items) > 0) return say("parts chosen")
 			// An arm's parts list grows in code past the scripted one (the servo plugs, rails and jack, the logic's power tree):
-			// it is unchanged while every scripted part is still in it.
+			// it is unchanged while every scripted part is still in it. A CNC's too (its power tree, its fixed wiring).
 			const now = state().contract.get("parts") ?? []
-			if (isArm() && wanted.every((p) => now.some((q) => q.ref === p.ref && q.mpn === p.mpn))) return say("parts unchanged")
+			if ((isArm() || isCnc()) && wanted.every((p) => now.some((q) => q.ref === p.ref && q.mpn === p.mpn))) return say("parts unchanged")
 			return JSON.stringify(now) === JSON.stringify(wanted) ? say("parts unchanged") : propose("parts", wanted, "parts from the catalog")
 		},
 		"mock-ml": (items) => {
