@@ -387,6 +387,10 @@ is a change to the firmware toolchain, not just the code.
       ground copper is kept away from it yet either.
       Audit 17 Nov (bringup-system): the report names parts within 15 mm (b95dfb3, advisory); left: the layout, the case
       and ground copper keeping clear.
+      27 Nov (bringup-board, 31ea4d98): the layout and the ground pours keep a band beside the module clear (the deepest
+      of 15/12/10/8/6/4 mm that places with every capacitor in reach; the report names it). Left: on 4-layer boards the
+      In2 power-plane regions (powerPlaneRegions) are not cut by the band yet (lead-2: "Add the In2 cut as a follow-up
+      line in the backlog"); and the case's 2 mm.
 - [ ] **RT9080 lifecycle:** one LCSC page flagged it "not recommended for new designs". Confirm with Richtek or a
       distributor, and name a second source.
       Audit 17 Nov (bringup-system): still open: needs Richtek or a distributor; the robots' power tree uses it too.

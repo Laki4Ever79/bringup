@@ -1414,6 +1414,11 @@ function antennaLayout(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	const floorMm = ANTENNA_CLEAR_MM.at(-1)!
 	const floor = layoutUncached(s, { ...opts, antennaClearMm: floorMm })
 	if (floor.parts.length < count) return floor
+	// A board grown so the router has room (outline.sizeReason "routing") keeps the floor: the room is the router's. A
+	// deeper band took it back as the board grew (6 mm at 45×29, 12 at 49×29, 15 at 53×29 and 55×29), the IMU's
+	// capacitors routed long at every width and the mock rover without Freerouting widened to the end, unsettled at r16
+	// (OS smoke run 45952251126, 27 Nov 2026; before the keep-out it settled at 55×29).
+	if (s.values.outline?.sizeReason?.kind === "routing") return { ...floor, antennaClearMm: floorMm }
 	// A deeper band counts only when it leaves no more pin capacitors out of reach than the floor: on run 21's compact
 	// board 12 mm placed every part but pushed U2's VDD capacitor 6.55 mm from its pin (5 mm bound), a layout tscircuit
 	// refuses, where the floor kept it beside (27 Nov 2026).
@@ -1557,7 +1562,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 		const pa = padOffset(fp, part.pins.indexOf(sp.a.pin) + 1, 0, !!opts.pinPads), pb = padOffset(fp, part.pins.indexOf(sp.b.pin) + 1, 0, !!opts.pinPads)
 		return !!pa && !!pb && sideOf(pa) !== sideOf(pb)
 	}
-	const pinCaps = supportParts(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
+	const pinCaps = pinEndedSupports(s).filter((sp) => sp.added && sp.spec.kind === "capacitor" && "ref" in sp.a && sp.near !== boardCrystal(s)?.ref)
 	// A turned part (the board page) turns its pads, and these boxes with them.
 	const capBoxes = (b: Placed, footprint: string): Placed[] => {
 		if (b.rotation % 90 !== 0) return []
@@ -1856,7 +1861,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// placed before its part has no pin to sit beside.
 	const owners = new Set(supportParts(s).flatMap((sp) => (sp.added && "ref" in sp.a ? [sp.a.ref] : [])))
 	for (const p of free) if (owners.has(p.ref)) put(p, centre)
-	const supports = [...supportParts(s)].sort((a, b) => first(a) - first(b))
+	const supports = [...pinEndedSupports(s)].sort((a, b) => first(a) - first(b))
 	for (const sp of supports) {
 		const want = besidePin(sp.a) ?? besideCrystal(sp.a) ?? boxOf(sp.near) ?? centre
 		if (sp.added) {
@@ -2870,6 +2875,25 @@ export function usbPadSignal(pin: string): string | undefined {
 
 // The bound tscircuit holds a pin capacitor's traces to (maxDecouplingTraceLength), null for none: 5 mm for a part's
 // own capacitor (the DRV8833's VINT and VCP), 20 mm for a bare chip's decoupling, none for a crystal's load capacitors.
+// The support parts as placement and the reach check see them: a bounded capacitor's net end (the LMR16010's bootstrap
+// capacitor, BOOT to the switch node U11_SW) taken as its owner chip's pin on that net (U11.SW). tscircuit bounds that
+// trace too, to the net's nearest member; with the end left a net the placer put C46 beside BOOT, 8.03 mm from SW at the
+// SO-8's other end, the check let it pass, and every layout of lead-3's CNC mock 15 rev 9 was refused before routing
+// while the 2- and 4-layer retries burned 25 minutes (27 Nov 2026). The emitted trace stays to the net.
+export function pinEndedSupports(s: ContractSnapshot): Support[] {
+	const sups = supportParts(s)
+	if (!sups.some((sp) => "net" in sp.a !== "net" in sp.b)) return sups
+	let nets: Map<string, string[]> | null = null
+	return sups.map((sp) => {
+		if (sp.spec.kind !== "capacitor" || capBound(s, sp) === null) return sp
+		const [ref, net] = "ref" in sp.a && "net" in sp.b ? [sp.a.ref, sp.b.net] : "ref" in sp.b && "net" in sp.a ? [sp.b.ref, sp.a.net] : [null, null]
+		if (!ref || !net || POWER_NETS.includes(net)) return sp
+		nets ??= generatedNets(s)
+		const pin = (nets.get(net) ?? []).find((e) => e.startsWith(`${ref}.`))?.slice(ref.length + 1)
+		if (!pin) return sp
+		return "net" in sp.b ? { ...sp, b: { ref, pin } } : { ...sp, a: { ref, pin } }
+	})
+}
 function capBound(s: ContractSnapshot, sp: Support): number | null {
 	if (sp.added && sp.bound !== undefined) return sp.bound
 	if (!sp.added || sp.spec.kind !== "capacitor" || sp.near === boardCrystal(s)?.ref || !("ref" in sp.a || "ref" in sp.b)) return null
@@ -2907,7 +2931,7 @@ export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}
 	const placed = layoutBoard(s, opts).parts
 	const parts = s.values.parts ?? []
 	const out: string[] = []
-	for (const sp of supportParts(s)) {
+	for (const sp of pinEndedSupports(s)) {
 		const bound = capBound(s, sp)
 		if (bound === null) continue
 		const cap = placed.find((b) => b.ref === sp.ref)
@@ -3169,6 +3193,38 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 const mpnOf = (p: Part) => (p.mpn ? ` manufacturerPartNumber=${q(p.mpn)}` : "")
 
 // Source of board.circuit.tsx. Every part gets a fixed position from placeParts; tscircuit only routes.
+// tscircuit refuses two children of one name ("Multiple immediate children found with name ESTOP_TRIP"): a signal on two
+// contract pins (the CNC's STEPPER_UART, one UART to every driver; ESTOP_TRIP) declared its net once per pin, and a
+// support passive's net trace was written both by the passive and by the net's own list (VMOT_C44_pin1). One <net> per
+// name (the one with a trace width wins), one trace per name and ends; another trace under a taken name gets a suffix
+// (lead-3's CNC mock 15 rev 9, 27 Nov 2026).
+export function uniqueNames(lines: string[]): string[] {
+	const nameOf = (l: string) => /^<(\w+) name="([^"]+)"/.exec(l)
+	const nets = new Map<string, number>()
+	const traces = new Map<string, string>()
+	const out: string[] = []
+	for (const l of lines) {
+		const m = nameOf(l)
+		if (m?.[1] === "net") {
+			const at = nets.get(m[2])
+			if (at === undefined) nets.set(m[2], out.push(l) - 1)
+			else if (!out[at].includes("nominalTraceWidth") && l.includes("nominalTraceWidth")) out[at] = l
+			continue
+		}
+		if (m?.[1] === "trace") {
+			const ends = l.replace(/^<trace name="[^"]+"/, "")
+			if (!traces.has(m[2])) { traces.set(m[2], ends); out.push(l); continue }
+			if ([...traces].some(([, e]) => e === ends)) continue
+			let k = 2
+			while (traces.has(`${m[2]}_${k}`)) k++
+			traces.set(`${m[2]}_${k}`, ends)
+			out.push(`<trace name="${m[2]}_${k}"${ends}`)
+			continue
+		}
+		out.push(l)
+	}
+	return out
+}
 export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions = {}): string {
 	const { outline, parts = [], pins = [], connectors = [] } = s.values
 	if (!outline) throw new Error("circuitFromContract: contract has no outline")
@@ -3257,7 +3313,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	return [
 		"export default () => (",
 		`  <board${boardLayers(s).layers === 4 ? " layers={4}" : ""} width="${outline.widthMm}mm" height="${outline.heightMm}mm" minViaHoleDiameter="0.25mm" minViaPadDiameter="0.45mm"${opts.routingDisabled ? " routingDisabled" : ""}>`,
-		...lines.map((l) => `    ${l}`),
+		...uniqueNames(lines).map((l) => `    ${l}`),
 		"  </board>",
 		")",
 		"",
