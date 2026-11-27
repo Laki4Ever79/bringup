@@ -1204,6 +1204,10 @@ export interface PlacementOptions {
 	// The gap kept between two parts' boxes, in mm (default GAP_MM, 1.5): the tight-first experiment places at 1.0 mm
 	// and keeps the wider gap as the retry (backlog "Tighter part spacing, proven by the router").
 	gapMm?: number
+	// The module antenna's keep-out depth in mm: no part within it of the antenna's edge, across the module's width plus
+	// it either side (Espressif recommends 15 mm). Unset: the deepest of ANTENNA_CLEAR_MM that places everything (layoutBoard);
+	// 0: none.
+	antennaClearMm?: number
 	// Place only, no autorouting: the board goes to Freerouting instead (src/tools/freerouting.ts).
 	routingDisabled?: boolean
 	// Place the pin parts of a SOT-23 and of the generator's own land patterns (the IMU, SO8E) beside their own pins
@@ -1340,7 +1344,7 @@ export function placeParts(s: ContractSnapshot, opts: PlacementOptions = {}): Pl
 // part sits over its holes (they go through the board) and the smallest board has room for it. It is not a part and is
 // not in parts. On the underside it must also stay clear of the USB-C connector (its routing, TEST_PAD.usbClearMm)
 // and, on a board without mounting holes, of the fixture's corner supports.
-export type Layout = { parts: Placed[]; debug: Placed | null; blocked: { ref: string; why: string }[] }
+export type Layout = { parts: Placed[]; debug: Placed | null; blocked: { ref: string; why: string }[]; antennaClearMm?: number; antennaZone?: { x: number; y: number; w: number; h: number; module: { x: number; y: number; w: number; h: number } } | null }
 
 function permutations<T>(xs: T[]): T[][] {
 	if (xs.length <= 1) return [xs]
@@ -1353,6 +1357,26 @@ function permutations<T>(xs: T[]): T[][] {
 // copy: some adjust what they get back.
 const LAYOUT_CACHE_SIZE = 256
 const layoutCache = new Map<string, Layout>()
+// The module antenna's keep-out by default (lead-2's decision, 22 Nov 2026): best effort from Espressif's 15 mm down to a
+// 4 mm floor, the deepest that places everything; the floor itself is a must (a board that can't hold 4 mm doesn't place,
+// so the minimum board grows for it). The floor is tried first, so a board that can't hold it fails at one layout.
+export const ANTENNA_CLEAR_MM = [15, 12, 10, 8, 6, 4]
+function antennaLayout(s: ContractSnapshot, opts: PlacementOptions): Layout {
+	const count = boardParts(s).length
+	const floorMm = ANTENNA_CLEAR_MM.at(-1)!
+	const floor = layoutUncached(s, { ...opts, antennaClearMm: floorMm })
+	if (floor.parts.length < count) return floor
+	// A deeper band counts only when it leaves no more pin capacitors out of reach than the floor: on run 21's compact
+	// board 12 mm placed every part but pushed U2's VDD capacitor 6.55 mm from its pin (5 mm bound), a layout tscircuit
+	// refuses, where the floor kept it beside (27 Nov 2026).
+	const far = (z: number) => unreachableCaps(s, { ...opts, antennaClearMm: z }).length
+	const floorFar = far(floorMm)
+	for (const z of ANTENNA_CLEAR_MM.slice(0, -1)) {
+		const l = layoutUncached(s, { ...opts, antennaClearMm: z })
+		if (l.parts.length >= count && far(z) <= floorFar) return { ...l, antennaClearMm: z }
+	}
+	return { ...floor, antennaClearMm: ANTENNA_CLEAR_MM.at(-1) }
+}
 export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): Layout {
 	const key = JSON.stringify(s.values) + "\u0000" + JSON.stringify(opts)
 	const hit = layoutCache.get(key)
@@ -1361,7 +1385,7 @@ export function layoutBoard(s: ContractSnapshot, opts: PlacementOptions = {}): L
 		layoutCache.set(key, hit)
 		return structuredClone(hit)
 	}
-	const fresh = layoutUncached(s, opts)
+	const fresh = opts.antennaClearMm === undefined && moduleOf((s.values.parts ?? []).find((p) => p.role === "mcu")) ? antennaLayout(s, opts) : layoutUncached(s, opts)
 	if (layoutCache.size >= LAYOUT_CACHE_SIZE) layoutCache.delete(layoutCache.keys().next().value!)
 	layoutCache.set(key, structuredClone(fresh))
 	return fresh
@@ -1439,7 +1463,12 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	}
 	let stamp = 0
 	const seen: number[] = []
+	// The module antenna's keep-out (PlacementOptions.antennaClearMm), set once the module is placed: a band along its edge,
+	// the module's width plus the clearance either side, the clearance deep. No other part goes in it.
+	let antennaZone: { x: number; y: number; w: number; h: number } | null = null
+	let antennaOwner = ""
 	const fits = (b: Placed, hug?: string) => {
+		if (antennaZone && b.ref !== antennaOwner && Math.abs(b.x - antennaZone.x) < (b.w + antennaZone.w) / 2 && Math.abs(b.y - antennaZone.y) < (b.h + antennaZone.h) / 2) return false
 		if (offEdge(b)) return false
 		syncIndex()
 		if (lastBlock < placed.length && blocks(b, placed[lastBlock], hug)) return false
@@ -1651,6 +1680,13 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// A bare chip stays at rotation 0, so its decoupling lands beside the right pads (besidePin).
 	const mcuModule = moduleOf(mcuPart)
 	const mcu = mcuPart && mcuModule ? placeModule(mcuPart, mcuModule) : put(mcuPart, { x: 0, y: 0 }, chipProfile(mcuPart) ? 0 : MODULE_ROTATION[edge])
+	if (mcu && mcuModule && opts.antennaClearMm) {
+		const z = opts.antennaClearMm, far = OPPOSITE[edge]
+		antennaOwner = mcu.ref
+		antennaZone = far === "top" || far === "bottom"
+			? { x: mcu.x, y: far === "top" ? H / 2 - z / 2 : -H / 2 + z / 2, w: mcu.w + 2 * z, h: z }
+			: { x: far === "right" ? W / 2 - z / 2 : -W / 2 + z / 2, y: mcu.y, w: z, h: mcu.h + 2 * z }
+	}
 	const centre = mcu ?? { x: 0, y: 0 }
 	// The LDO sits a fixed distance in from the USB-C connector, not halfway to the MCU: on wider boards the
 	// halfway point left a gap where tscircuit's router dropped a via onto the VBUS pad (55–60 mm boards).
@@ -1854,7 +1890,7 @@ function layoutUncached(s: ContractSnapshot, opts: PlacementOptions): Layout {
 				}
 		}
 	}
-	return { parts: placed, debug, blocked }
+	return { parts: placed, debug, blocked, antennaZone: antennaZone && mcu ? { ...antennaZone, module: { x: mcu.x, y: mcu.y, w: mcu.w, h: mcu.h } } : null }
 }
 
 // Production-test pads (contract field test): one round copper pad per probed net on the bottom layer, where a
@@ -2981,7 +3017,40 @@ function segGap(a: { x: number; y: number }, b: { x: number; y: number }, c: { x
 	return Math.min(toSeg(a, c, d), toSeg(b, c, d), toSeg(c, a, b), toSeg(d, a, b))
 }
 
-function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = false, unbounded = false): string[] {
+// The board outline (W×H, centred) with the antenna's keep-out band cut out beside the module: the band (at one edge,
+// the module's width plus the clearance either side) less the module's own column, whose ground pads keep their pour.
+// Worked at the top edge and turned for the others; null when the band doesn't reach an edge.
+type Box = { x: number; y: number; w: number; h: number }
+export function antennaNotch(W: number, H: number, z: Box & { module: Box }): { x: number; y: number }[] | null {
+	const e = 1e-6
+	const edge = z.y + z.h / 2 >= H / 2 - e ? 0 : z.x + z.w / 2 >= W / 2 - e ? 1 : z.y - z.h / 2 <= -H / 2 + e ? 2 : z.x - z.w / 2 <= -W / 2 + e ? 3 : -1
+	if (edge < 0) return null
+	// To the top-edge frame and back: a quarter turn clockwise per edge index (right → top, bottom → top, left → top).
+	const turn = (p: { x: number; y: number }, k: number) => { let q = p; for (let i = 0; i < ((k % 4) + 4) % 4; i++) q = { x: -q.y, y: q.x }; return q }
+	const [w, h] = edge % 2 ? [H, W] : [W, H]
+	const box = (b: Box) => { const c = turn(b, edge); const [bw, bh] = edge % 2 ? [b.h, b.w] : [b.w, b.h]; return { x: c.x, y: c.y, w: bw, h: bh } }
+	const [zb, mb] = [box(z), box(z.module)]
+	const [x0, x1, y0] = [Math.max(-w / 2, zb.x - zb.w / 2), Math.min(w / 2, zb.x + zb.w / 2), zb.y - zb.h / 2]
+	const [m0, m1] = [Math.max(x0, mb.x - mb.w / 2), Math.min(x1, mb.x + mb.w / 2)]
+	const top = h / 2
+	const pts = [[-w / 2, -top], [-w / 2, top], [x0, top], [x0, y0], [m0, y0], [m0, top], [m1, top], [m1, y0], [x1, y0], [x1, top], [w / 2, top], [w / 2, -top]].map(([x, y]) => turn({ x, y }, -edge))
+	// A band that reaches a corner, or a module as wide as the band, leaves points in line with their neighbours or
+	// spikes back along an edge: a point in line with its neighbours goes, until none is.
+	let out = pts.map((p) => ({ x: +p.x.toFixed(3) + 0, y: +p.y.toFixed(3) + 0 }))
+	for (let changed = true; changed && out.length > 3; ) {
+		changed = false
+		for (let i = 0; i < out.length; i++) {
+			const [a, b, c] = [out[(i + out.length - 1) % out.length], out[i], out[(i + 1) % out.length]]
+			if (Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) < 1e-9) {
+				out.splice(i, 1)
+				changed = true
+				break
+			}
+		}
+	}
+	return out.length >= 4 ? out : null
+}
+function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = false, unbounded = false, antenna: (Box & { module: Box }) | null = null): string[] {
 	const drawn = draw ? drawnCapPaths(s, placement) : []
 	const lines: string[] = []
 	const port = (ref: string, pin: string) => `.${ref} > .${pin}`
@@ -3024,11 +3093,16 @@ function powerLines(s: ContractSnapshot, placement: Map<string, Placed>, draw = 
 	// Margins over JLCPCB's 2-layer rules (0.2 mm hole clearance, 0.3 mm copper to edge): tscircuit's defaults left the
 	// pours 0.19 mm from the mounting holes and on the edge clearance (the rpi-5 HAT, 15 Nov 2026: 10 KiCad DRC errors).
 	// A 4-layer board (space.ts boardLayers): ground on In1, each wide rail on its own region of In2 (planeRegions).
+	// The module antenna's keep-out band stays free of copper too (Espressif: no copper under or beside the antenna):
+	// the pours take the board outline with the band cut out of its edge.
+	const o = s.values.outline
+	const notch = antenna && o ? antennaNotch(o.widthMm, o.heightMm, antenna) : null
+	const pourOutline = notch ? ` outline={[${notch.map((p) => `{ x: ${p.x}, y: ${p.y} }`).join(", ")}]}` : ""
 	if (boardLayers(s).layers === 4) {
-		lines.push(`<copperpour connectsTo="net.GND" layer="inner1" clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
+		lines.push(`<copperpour connectsTo="net.GND" layer="inner1"${pourOutline} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 		for (const r of powerPlaneRegions(s, placement)) lines.push(`<copperpour connectsTo=${q(`net.${r.net}`)} layer="inner2" outline={[${r.outline.map((p) => `{ x: ${p.x}, y: ${p.y} }`).join(", ")}]} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 	}
-	for (const pour of supplyPours(s, unbounded)) lines.push(`<copperpour connectsTo=${q(`net.${pour.net}`)} layer=${q(pour.layer)} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
+	for (const pour of supplyPours(s, unbounded)) lines.push(`<copperpour connectsTo=${q(`net.${pour.net}`)} layer=${q(pour.layer)}${pourOutline} clearance="${POUR.clearanceMm}mm" padMargin="${POUR.clearanceMm}mm" cutoutMargin="${POUR.clearanceMm}mm" boardEdgeMargin="${POUR.edgeMm}mm" />`)
 	return lines
 }
 
@@ -3090,7 +3164,7 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 	for (const t of skidDriverTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
 	// An I2C link joins the board's own bus: the connector's IO1 and IO2 to I2C_SDA and I2C_SCL (docs/system.md).
 	for (const t of linkBusTraces(s)) lines.push(`<trace name=${q(`${t.net}_${t.ref}_${t.pin}`)} from=${q(`.${t.ref} > .${t.pin}`)} to=${q(`net.${t.net}`)} />`)
-	lines.push(...powerLines(s, placement, !!opts.drawCaps, !!opts.routingDisabled))
+	lines.push(...powerLines(s, placement, !!opts.drawCaps, !!opts.routingDisabled, layoutBoard(s, opts).antennaZone ?? null))
 	// Test pads join their net by name: a contract signal's net, or a generated power net (one that reaches two parts).
 	const nets = new Set([...pins.map((p) => p.signal), ...generatedNets(s).keys()])
 	const bootNet = recoveryBootNet(s)

@@ -4,7 +4,7 @@
 // directions". The guideline gives no figure for parts on the base board itself, so this is advisory: the report names
 // every board part within 15 mm of the antenna, and no layout changes for it yet.
 // https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c3/pcb-layout-design.html
-import { ANTENNA_MM, antennaOverhang, placeParts } from "../codegen/circuit.ts"
+import { ANTENNA_CLEAR_MM, ANTENNA_MM, antennaOverhang, layoutBoard, placeParts } from "../codegen/circuit.ts"
 import type { ContractSnapshot } from "./types.ts"
 
 export const ANTENNA_CLEARANCE_MM = 15
@@ -52,7 +52,11 @@ export function antennaClearance(s: ContractSnapshot): AntennaClearance | null {
 export function antennaLine(s: ContractSnapshot): string | null {
 	const c = antennaClearance(s)
 	if (!c) return null
+	// The keep-out band the placer held beside the module (no part, no ground pour): the deepest of ANTENNA_CLEAR_MM that
+	// places every part with its capacitors in reach; the last is the floor every board keeps.
+	const z = s.values.outline ? layoutBoard(s).antennaClearMm : undefined
+	const band = z === undefined ? "" : `; keep-out band ${z} mm beside it, free of parts and ground pour (${z >= ANTENNA_CLEAR_MM[0] ? "Espressif's full" : `the deepest of ${ANTENNA_CLEAR_MM.join("/")} mm this board holds`})`
 	return c.near.length
-		? `- Antenna (advisory): ${c.near.length} part${c.near.length === 1 ? "" : "s"} within Espressif's recommended ${ANTENNA_CLEARANCE_MM} mm of the module's antenna (past the ${c.edge} edge): ${c.near.map((n) => `${n.ref} ${n.mm} mm`).join(", ")}`
-		: `- Antenna: past the ${c.edge} edge, no board part within Espressif's recommended ${ANTENNA_CLEARANCE_MM} mm`
+		? `- Antenna (advisory): ${c.near.length} part${c.near.length === 1 ? "" : "s"} within Espressif's recommended ${ANTENNA_CLEARANCE_MM} mm of the module's antenna (past the ${c.edge} edge): ${c.near.map((n) => `${n.ref} ${n.mm} mm`).join(", ")}${band}`
+		: `- Antenna: past the ${c.edge} edge, no board part within Espressif's recommended ${ANTENNA_CLEARANCE_MM} mm${band}`
 }

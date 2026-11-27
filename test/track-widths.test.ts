@@ -85,7 +85,8 @@ test("the space model reserves each wide rail's lane and grows the minimum board
 	// Placement alone packs it in about 3550 mm² (three rail chips with their parts, 26 Nov 2026; 2914 with two
 	// SY8368As); with the lanes the area is that plus theirs.
 	const lanes = c.reduce((a, x) => a + x.areaMm2, 0)
-	assert.ok(m.areaMm2 - lanes > 3300 && m.areaMm2 - lanes < 3800, `${m.areaMm2} - ${lanes}`)
+	// (About 3810 with the antenna's keep-out band, 27 Nov 2026: the module's band costs placement room.)
+	assert.ok(m.areaMm2 - lanes > 3300 && m.areaMm2 - lanes < 4000, `${m.areaMm2} - ${lanes}`)
 	assert.ok(m.widthMm * m.heightMm >= m.areaMm2)
 	// A board without wide rails is unchanged (the HAT's 5 V is poured).
 	assert.deepEqual(railCorridors({ ...s, values: { ...s.values, arm: undefined, rails: [] } }), [])
