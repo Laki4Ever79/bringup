@@ -106,8 +106,8 @@ hardware plugin that talks to the firmware ([docs/ros.md](docs/ros.md#from-npm-n
 **A desktop arm** ([briefs/arm.md](briefs/arm.md)): six hobby servos on its own board, the base, brackets, wrist and
 gripper as printable parts checked for collisions across the joints' range and for printability, its firmware picking a
 cube and dropping it into a cup in simulation (5 of 5 in the acceptance test), and its URDF and controllers.
-<!-- The arm's picture goes here: lead-5's new still (examples/arm/still.png on the private repo), copied to
-     docs/img/arm.png for the public README. -->
+
+![The desktop arm Bringup designed: its printed base, links and gripper on their servos, its board, the cube and the cup, with its reach and link lengths](docs/img/arm-still.png)
 
 ## How it works
 
