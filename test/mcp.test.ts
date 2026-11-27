@@ -657,6 +657,10 @@ test("get_pictures returns the newest board's 3D picture as an image and lists e
 		assert.deepEqual(machine.machine, { result: "pass", checks: ["pass X steps: 800 step pulses on PA0, 800 expected"] })
 		assert.match(machine.notes.join(" "), /no toolpath pictures: the simulated machine recorded no toolpath/)
 		// overview: one picture of the whole design; without the case tools a note says why, and the run's files still list.
+		// compare: a run with no change request says how to get one.
+		const nochange = await mcp.call("get_pictures", { runId: "pics-run", compare: true })
+		assert.equal(nochange.isError, true)
+		assert.match(nochange.text, /no change request to compare across/)
 		const ov = JSON.parse((await mcp.call("get_pictures", { runId: "pics-run", overview: true })).text)
 		assert.ok(ov.files.length >= 3)
 	} finally {

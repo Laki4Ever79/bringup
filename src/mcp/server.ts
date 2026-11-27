@@ -1,6 +1,8 @@
 import { providerProblem } from "../inference/providers.ts"
 import { continueSeed } from "../runner/continue.ts"
 import { armPictures, armSimPictures, assemblyPictures, casePictures, cncSimPictures, drivePictures, overviewPicture } from "../package/assembly-pictures.ts"
+import { comparePictures } from "../package/compare-pictures.ts"
+import { compareDesigns, designAt, lastChange } from "../package/compare.ts"
 import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
@@ -558,22 +560,37 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	server.registerTool(
 		"get_pictures",
 		{
-			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). A robot's simulation (its firmware in QEMU driving the MuJoCo model: a rover's drive, an arm's pick-and-place; a CNC's grblHAL in Renode) comes back as its verdict; with drive: true also as pictures of it moving and a GIF (a CNC: its toolpath; 2-90 s). overview: true puts the board, the assembly and the motion side by side in one image. Every file is also listed by path.",
+			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). A robot's simulation (its firmware in QEMU driving the MuJoCo model: a rover's drive, an arm's pick-and-place; a CNC's grblHAL in Renode) comes back as its verdict; with drive: true also as pictures of it moving and a GIF (a CNC: its toolpath; 2-90 s). overview: true puts the board, the assembly and the motion side by side in one image; compare: true shows the design before and after the last change request, with a one-line summary of what changed. Every file is also listed by path.",
 			inputSchema: {
 				runId: z.string(),
 				board: BOARD,
 				stills: z.boolean().optional().describe("Render 3D stills into <run>/pictures (py/stills.py, the case tools): the board in its case, or a robot or arm step by step. Default false."),
+				compare: z.union([z.boolean(), z.object({ before: z.number().int().min(0), after: z.number().int().min(0) })]).optional().describe("The design before and after a change, as one image: before above after, the board, the assembly and the motion side by side, the panels that changed framed, and a one-line summary (board size, parts moved, simulation verdicts, contract fields changed). true: around the run's last change request (request_change / continue_design); or two revisions { before, after }. Needs the case tools; up to about 3 min the first time."),
 				overview: z.boolean().optional().describe("The whole design in one picture: the board, the assembly (the robot or arm assembled, or the case) and its motion (a drive, a pick-and-place, a toolpath) side by side, returned as a single image (pictures/overview.png); it makes the stills and motion pictures it needs (needs the case tools; up to about 2 min). Default false."),
 				drive: z.boolean().optional().describe("Render the robot's simulation into <run>/pictures (the case tools): a rover's drive (drive/: the course from above with its path, three frames following the robot, drive.gif) an arm's pick-and-place (armsim/: pick, carry, drop, the landings from above, arm.gif) or a CNC's toolpath (cncsim/: from above on a mm grid with the bed, from the front left, cnc.gif). Default false."),
 			},
 		},
-		async ({ runId, board, stills, drive, overview }) => {
+		async ({ runId, board, stills, drive, overview, compare }) => {
 			// The overview needs the assembly and the motion pictures: make them as stills and drive would.
 			if (overview) (stills = true), (drive = true)
 			const r = await runDir(runId)
 			if ("error" in r) return fail(r.error)
 			const b = boardDir(r.dir, runId, board)
 			if ("error" in b) return fail(b.error)
+			// compare: the design before and after a change, one image and one line (src/package/compare-pictures.ts).
+			if (compare) {
+				const change = lastChange(b.dir)
+				const span = typeof compare === "object" ? { before: compare.before, after: compare.after, text: undefined } : change ? { before: change.before, after: change.after, text: change.text } : null
+				if (!span) return fail(`run ${runId} has no change request to compare across: ask for one (request_change), or pass compare: { before, after } with two revisions`)
+				const env = await (deps.detect ?? (() => detectEnvironment(root)))()
+				if (!env.python) {
+					const c = compareDesigns(designAt(b.dir, span.before), designAt(b.dir, span.after))
+					return ok({ runId, compare: { before: span.before, after: span.after, request: span.text, ...c }, notes: ["no comparison picture: it is drawn with the case tools (`npx bringup-mcp setup case`, after your user says yes)"] })
+				}
+				const p = await comparePictures(env.python, root, b.dir, span.before, span.after, span.text)
+				const text = JSON.stringify({ runId, compare: { before: span.before, after: span.after, ...(span.text ? { request: span.text } : {}), summary: p.comparison.summary, changed: p.comparison.changed, details: p.comparison.details }, ...(p.file ? { file: p.file } : {}), ...(p.note ? { notes: [p.note] } : {}) }, null, 2)
+				return { content: [{ type: "text" as const, text }, ...(p.file && statSync(p.file).size <= 2_000_000 ? [{ type: "image" as const, data: readFileSync(p.file).toString("base64"), mimeType: "image/png" }] : [])] }
+			}
 			const newest = (dir: string, has: string): string | null => {
 				if (!existsSync(dir)) return null
 				const revs = readdirSync(dir).map((n) => /^rev-(\d+)$/.exec(n)).filter((m): m is RegExpExecArray => m !== null).map((m) => Number(m[1])).sort((x, y) => y - x)
