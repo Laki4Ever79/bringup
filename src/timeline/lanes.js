@@ -155,6 +155,8 @@ export function applyLaneEvent(lanes, e) {
 				const text = d.result === "pass" ? `rev ${p.revision} · drive passed` : d.result === "fail" ? `rev ${p.revision} · failed${d.failed ? `: ${d.failed}` : ""}` : `rev ${p.revision} · not run`
 				return set(lanes, "build:drive", d.result === "fail" ? "failed" : "done", text, e.at, true)
 			}
+			// The simulated pick-and-place: how many cubes landed, not only that it ran.
+			if (p.armsim) return set(lanes, "build:armsim", p.armsim.result === "fail" ? "failed" : "done", armSimText(p.revision, p.armsim), e.at, true, p.armsim.reason)
 			const text = !drc ? `rev ${p.revision} built` : drc.errors ? `DRC: ${plural(drc.errors, "error")}` : `rev ${p.revision} · DRC clean`
 			const detail = drc ? `rev ${p.revision}: ${plural(drc.errors, "error")}, ${plural(drc.warnings ?? 0, "warning")}, ${drc.unconnected ?? 0} unconnected (${drc.rules ?? "default"} rules)` : undefined
 			return set(lanes, `build:${p.kind}`, "done", text, e.at, true, detail)
@@ -197,4 +199,11 @@ export function applyLaneEvent(lanes, e) {
 		default:
 			return []
 	}
+}
+
+// The pick-and-place tile's line: "rev 14 · 5 of 5 cubes landed" (pass or fail), or "rev 14 · not run".
+export function armSimText(revision, a) {
+	if (!a || a.result === "not run") return `rev ${revision} · not run`
+	const cubes = typeof a.landed === "number" && typeof a.attempts === "number" ? `${a.landed} of ${a.attempts} cubes landed` : a.result === "pass" ? "pick-and-place passed" : "pick-and-place failed"
+	return `rev ${revision} · ${cubes}`
 }

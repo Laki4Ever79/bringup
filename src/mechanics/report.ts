@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
-import type { DriveArtifact } from "../tools/drive.ts"
+import type { ArmDriveArtifact, DriveArtifact } from "../tools/drive.ts"
 import { defaultCheckCatalog, mechanicsFigures, SERVO_SUPPLY_EFF } from "./checks.ts"
 import { ESTIMATES, est, estNote } from "./estimates.ts"
 import { ARM_APPROACH_MM, armChecks, worstTorques } from "../arm/checks.ts"
@@ -111,9 +111,27 @@ export function armSection(s: ContractSnapshot): string[] {
 // Pictures of the drive (py/drive_pictures.py, package/assembly-pictures.ts): where they are and which drive they show,
 // or how to make them (they're drawn on request: get_pictures with drive: true).
 export function drivePicturesLine(driveDir: string | undefined): string {
-	const dir = driveDir ? join(dirname(dirname(driveDir)), "pictures", "drive") : null
-	let made: { revision: number | null; files: string[] } | null = null
+	return simPicturesLine(driveDir, "drive", "the drive", "drive.gif (the whole drive, animated), drive-track.png (from above), drive-1-start.png, drive-2-farthest.png, drive-3-end.png")
+}
+
+// The report's pick-and-place (an arm with arm targets): the simulated result (armsim/rev-N/arm.json: the arm firmware in
+// QEMU driving the MuJoCo arm) and where its pictures are, or how to make them.
+export function armSimSection(sim: ArmDriveArtifact | undefined): string[] {
+	if (!sim) return []
+	const lines = ["## Pick-and-place", ""]
+	if (sim.result === "not run") return [...lines, `Simulated pick-and-place: not proven in simulation (${sim.reason}).`, ""]
+	lines.push(`Simulated pick-and-place: ${sim.result} (the arm's own firmware in QEMU driving the MuJoCo arm, revision ${sim.revision}): ${sim.reason}.`)
+	if (sim.cycleS?.length) lines.push(`- ${sim.cycleS.length} cycle${sim.cycleS.length === 1 ? "" : "s"}, ${(sim.cycleS.reduce((a, b) => a + b, 0) / sim.cycleS.length).toFixed(1)} s each on average (simulated time)`)
+	for (const [i, d] of (sim.drops ?? []).entries()) lines.push(`- Cube ${i + 1}: ${d.landed ? "landed" : "MISSED"}, ${d.fromCupMm.toFixed(1)} mm from the cup's centre`)
+	lines.push(simPicturesLine(sim.dir, "armsim", "the pick-and-place", "arm.gif (the first pick and place, animated), arm-landings.png (every cube from above), arm-1-pick.png, arm-2-carry.png, arm-3-drop.png"), "")
+	return lines
+}
+
+function simPicturesLine(simDir: string | undefined, kind: "drive" | "armsim", what: string, list: string): string {
+	const dir = simDir ? join(dirname(dirname(simDir)), "pictures", kind) : null
+	let made: { revision: number | null } | null = null
 	try { if (dir && existsSync(join(dir, "pictures.json"))) made = JSON.parse(readFileSync(join(dir, "pictures.json"), "utf8")) } catch {}
-	if (!dir || !made) return "- Pictures of the drive: not made yet (ask for them: get_pictures with drive: true; they land in pictures/drive/)"
-	return `- Pictures of the drive${made.revision ? ` (revision ${made.revision})` : ""}: ${dir}/drive.gif (the whole drive, animated), drive-track.png (from above), drive-1-start.png, drive-2-farthest.png, drive-3-end.png`
+	if (!dir || !made) return `- Pictures of ${what}: not made yet (ask for them: get_pictures with drive: true; they land in pictures/${kind}/)`
+	const [first, ...rest] = list.split(", ")
+	return `- Pictures of ${what}${made.revision ? ` (revision ${made.revision})` : ""}: ${dir}/${first}${rest.length ? `, ${rest.join(", ")}` : ""}`
 }

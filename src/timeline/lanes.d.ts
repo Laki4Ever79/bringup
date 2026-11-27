@@ -9,3 +9,4 @@ export function needsText(missing: string[]): string
 type TraceLike = { type: string; at?: string; payload?: any }
 export function shownLanes(events: TraceLike[]): string[]
 export function agreeLine(events: TraceLike[]): string
+export function armSimText(revision: number, a: { result: string; landed?: number; attempts?: number } | null | undefined): string

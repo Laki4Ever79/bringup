@@ -287,6 +287,7 @@ export function createArmSimBuilder(env: Env, lock?: BuildLock): Human {
 		inputs: BUILD_INPUTS.armsim,
 		requires: BUILD_REQUIRES.armsim,
 		notNeeded: armNotNeeded,
+		summary: armSimSummary,
 		build: async ({ dir, snapshot, revision }) => {
 			const notRun = (reason: string): ArmDriveArtifact => ({ revision, dir, result: "not run", reason, note: "" })
 			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the simulation tools are missing (`npx bringup-mcp setup firmware sim`): not proven in simulation")
@@ -369,6 +370,13 @@ export function createDriveBuilder(env: Env, lock?: BuildLock): Human {
 			return runDrive({ root: env.root, python: env.python, pio: env.pio, fwDir: fw, spec, outDir: dir, machine }, revision)
 		},
 	})
+}
+
+// How the simulated pick-and-place went, for its tile and the Simulation chapter's line: the result and how many cubes
+// landed in the cup (a run that didn't happen says why).
+export function armSimSummary(a: ArmDriveArtifact): { result: ArmDriveArtifact["result"]; landed?: number; attempts?: number; reason?: string } {
+	if (a.result === "not run") return { result: a.result, reason: a.reason }
+	return { result: a.result, ...(a.landed !== undefined ? { landed: a.landed } : {}), ...(a.attempts !== undefined ? { attempts: a.attempts } : {}) }
 }
 
 // How the simulated drive went, for the Drive tile: its result and the first segment that failed.

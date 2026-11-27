@@ -98,6 +98,9 @@ export async function armSimPictures(python: string, root: string, posedDir: str
 	try {
 		const { stdout } = await exec(python, [join(root, "py", "arm_pictures.py"), posedDir, simDir, dir], { timeout: 600_000 })
 		const files = stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => /\.(png|gif)$/.test(f)).map((f) => `armsim/${f}`)
+		// Which pick-and-place they show, as for the drive's (pictures.json): the page and the report label them by it.
+		const revision = Number(/rev-(\d+)$/.exec(simDir.replace(/[\\/]+$/, ""))?.[1]) || null
+		writeFileSync(join(dir, DRIVE_PICTURES_FILE), JSON.stringify({ revision, files: files.map((f) => f.replace(/^armsim\//, "")), at: new Date().toISOString() }, null, "\t"))
 		log(`pick-and-place pictures: ${files.length} in ${dir}`)
 		return { files, note: null }
 	} catch (e) {
