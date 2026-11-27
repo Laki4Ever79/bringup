@@ -93,14 +93,15 @@ export function leafChanges(a: unknown, b: unknown, path = ""): [string, unknown
 
 // One change as a person reads it: "chassis board 1 at x -20 → -15 mm" from chassis.boards[0].at.xMm.
 function said([path, a, b]: [string, unknown, unknown]): string {
-	const mm = /Mm$/.test(path)
+	// A millimetre value, or one of a millimetre list (plateMm[1]: the plate's second dimension).
+	const mm = /Mm(\[\d+\])?$/.test(path)
 	const words = path
+		.replace(/Mm(\[\d+\])?$/, "$1")
 		.replace(/\[(\d+)\]/g, (_, i) => ` ${Number(i) + 1}`)
-		.replace(/Mm$/, "")
 		.split(".")
 		.join(" ")
 	const v = (x: unknown) => (x === undefined ? "none" : typeof x === "object" ? "…" : String(x))
-	return `${words} ${v(a)} → ${v(b)}${mm ? " mm" : ""}`
+	return `${words}: ${v(a)} → ${v(b)}${mm ? " mm" : ""}`
 }
 
 export interface Comparison {
@@ -109,6 +110,7 @@ export interface Comparison {
 	details: {
 		outline?: { before: [number, number] | null; after: [number, number] | null }
 		moved: string[]
+		swapped: string[]
 		added: string[]
 		removed: string[]
 		verdicts: { what: string; before: string | null; after: string | null }[]
@@ -125,9 +127,11 @@ export function compareDesigns(a: DesignAt, b: DesignAt): Comparison {
 	const pa = placements(a.dirs.board), pb = placements(b.dirs.board)
 	// Moved: more than half a millimetre (the router's own rounding stays under it).
 	const moved = [...pb].filter(([ref, [x, y]]) => pa.has(ref) && Math.hypot(x - pa.get(ref)![0], y - pa.get(ref)![1]) > 0.5).map(([ref]) => ref)
-	const refs = (c: Record<string, unknown> | null) => new Set(((c?.parts as { ref: string }[] | undefined) ?? []).map((p) => p.ref))
-	const ra = refs(a.contract), rb = refs(b.contract)
-	const added = [...rb].filter((r) => !ra.has(r)), removed = [...ra].filter((r) => !rb.has(r))
+	const mpns = (c: Record<string, unknown> | null) => new Map(((c?.parts as { ref: string; mpn?: string }[] | undefined) ?? []).map((p) => [p.ref, p.mpn ?? ""]))
+	const ma = mpns(a.contract), mb = mpns(b.contract)
+	const added = [...mb.keys()].filter((r) => !ma.has(r)), removed = [...ma.keys()].filter((r) => !mb.has(r))
+	// The same ref, another part: a sensor swapped keeps its place in the design (U2 SHT40 → SHTC3).
+	const swapped = [...mb].filter(([ref, mpn]) => ma.has(ref) && ma.get(ref) !== mpn).map(([ref, mpn]) => `${ref} ${ma.get(ref)} → ${mpn}`)
 	const verdicts = (
 		[
 			["drive", "drive", "drive.json"],
@@ -146,6 +150,7 @@ export function compareDesigns(a: DesignAt, b: DesignAt): Comparison {
 	if (moved.length) parts.push(`${list(moved)} moved`)
 	if (added.length) parts.push(`added ${list(added)}`)
 	if (removed.length) parts.push(`removed ${list(removed)}`)
+	if (swapped.length) parts.push(`swapped ${list(swapped)}`)
 	for (const v of verdicts) parts.push(`${v.what} ${v.before ?? "not run"} → ${v.after ?? "not run"}`)
 	// Each changed field down to its values: up to four said one by one; a field with more, as a count.
 	for (const f of fields) {
@@ -159,6 +164,6 @@ export function compareDesigns(a: DesignAt, b: DesignAt): Comparison {
 	return {
 		summary: parts.join("; ") || "nothing changed",
 		changed: { board: a.dirs.board !== b.dirs.board, assembly: assemblyA !== assemblyB, motion: motionA !== motionB },
-		details: { outline: { before: sa, after: sb }, moved, added, removed, verdicts, fields },
+		details: { outline: { before: sa, after: sb }, moved, swapped, added, removed, verdicts, fields },
 	}
 }

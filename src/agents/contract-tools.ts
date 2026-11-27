@@ -24,7 +24,7 @@ import { connectorsForParts, ESTOP_PLUG_REF, isEncoderPlug, isMotorPlug, MOTOR_P
 const mcuCatalog = () => loadCatalog(fileURLToPath(new URL("../..", import.meta.url))) as never
 
 export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
-	return [
+	const tools: Tool[] = [
 		{
 			type: "function",
 			name: "read_contract",
@@ -356,6 +356,21 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 			},
 		},
 	]
+	// Every proposal the contract refuses is an event too, not only the agent's tool result: the report, ripples.json and
+	// the MCP say why a request changed nothing (a mock rover's "make it 2 cm wider": the mechanics agent's wider chassis
+	// was refused, over the brief's 150 x 120 mm, and the run settled with "nothing changed" and no reason anywhere).
+	return tools.map((t) =>
+		t.type !== "function" || t.name !== "propose_contract_change"
+			? t
+			: {
+					...t,
+					invoke: async (args: { field: FieldName; reason?: string }) => {
+						const r = (await (t.invoke as (a: unknown) => Promise<unknown>)(args)) as { status?: string; reason?: string } | undefined
+						if (r?.status === "invalid" && typeof r.reason === "string") emit(makeEvent("change.refused", self.id, { field: args.field, by: role, owner: OWNERS[args.field] ?? role, reason: r.reason }), self.id)
+						return r
+					},
+				},
+	) as Tool[]
 }
 
 const isObjectValue = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)

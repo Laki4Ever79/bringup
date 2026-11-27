@@ -41,7 +41,7 @@ test("the design at a revision: each builder's newest folder at or below it; the
 	assert.equal(a.dirs.drive, join(dir, "drive", "rev-2"))
 	assert.equal(b.dirs.drive, join(dir, "drive", "rev-6"))
 	const c = compareDesigns(a, b)
-	assert.equal(c.summary, "board 45×29 → 49×29 mm; U6 moved; added C2; removed C1; drive pass → fail; chassis boards 1 at x -20 → -15 mm")
+	assert.equal(c.summary, "board 45×29 → 49×29 mm; U6 moved; added C2; removed C1; drive pass → fail; chassis boards 1 at x: -20 → -15 mm")
 	assert.deepEqual(c.changed, { board: true, assembly: false, motion: true })
 	// The same revision twice: nothing changed.
 	assert.equal(compareDesigns(b, b).summary, "board 49×29 mm, same size; drive fail → fail")

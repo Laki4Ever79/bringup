@@ -1232,7 +1232,10 @@ export function mockScripts(): Record<string, Script> {
 				// The one request mapper (runner/request-map.ts), also what the "what if" preview shows.
 				const change = current ? mechanicsFromRequest(request, current) : null
 				if (step === 0 && change) return propose("mechanics", change.value, change.reason)
-				return say(change ? "chassis updated" : "no mechanics change")
+				// Its answer says what happened: a refused proposal isn't "updated" (the contract's reason, as a model would).
+				const result = text(items.findLast((i) => i instanceof FunctionCallOutputItem))
+				const refused = /"status":"(invalid|refused)"/.test(result) ? (/"reason":"((?:[^"\\]|\\.)*)"/.exec(result)?.[1] ?? "refused") : null
+				return say(!change ? "no mechanics change" : refused ? `not changed: ${refused}` : "chassis updated")
 			}
 			if (instruction.startsWith("Change request")) {
 				const id = /proposalId=([\w-]+)/.exec(instruction)?.[1]

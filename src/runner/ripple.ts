@@ -38,6 +38,9 @@ export interface Ripple {
 	// After the first design.ready, a re-settle re-arms the brief review: what its fix rounds changed until the next
 	// request. Kept apart, so the request's own ripple isn't inflated by review work, and nothing is hidden.
 	reviewFollowUps: { fieldsChanged: string[]; rounds: number }
+	// Proposals the contract or change control refused while the request was being met, each with its reason: a request
+	// that changed nothing says why ("the chassis can't change size that way: ... at most 96 mm wide").
+	refused: { field: string; by: string; reason: string }[]
 }
 
 // Every build, a robot's chassis and simulated drive included (docs/mechanics.md).
@@ -50,7 +53,7 @@ export const RIPPLE_PARTICIPANTS = ["architect", "parts", "ml", "test", "enclosu
 
 // written: the fields some agent had written before the request; an optional builder (the test kit) wakes only once its
 // field exists, as the builder itself does.
-function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean, written = new Set<string>(), participants = RIPPLE_PARTICIPANTS): Omit<Ripple, "reviewFollowUps"> {
+function ripple(window: TraceEvent[], request: TraceEvent, startMs: number, lastCheckClean: boolean, written = new Set<string>(), participants = RIPPLE_PARTICIPANTS): Omit<Ripple, "reviewFollowUps" | "refused"> {
 	const atMs = Date.parse(request.at) - startMs
 	const fields: string[] = []
 	const woke = new Set<string>()
@@ -142,7 +145,9 @@ export function changeRipples(trace: TraceEvent[]): Ripple[] {
 		// Only the lanes this design has (a robot's, the case's), as the page shows them (shownLanes in lanes.js).
 		const shown = new Set(shownLanes(trace.slice(0, starts[k + 1] ?? trace.length)))
 		const participants = RIPPLE_PARTICIPANTS.filter((p) => shown.has(p))
-		return { ...ripple(own, trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0, written, participants), reviewFollowUps: { fieldsChanged: followFields, rounds } }
+		// Each distinct refusal once (an agent retrying the same value is refused the same way).
+		const refused = [...new Map(own.filter((e) => e.type === "change.refused").map((e) => [`${e.payload.field}|${e.payload.reason}`, { field: String(e.payload.field), by: String(e.payload.by), reason: String(e.payload.reason) }])).values()]
+		return { ...ripple(own, trace[start], startMs, (lastCheck?.payload.violations.length ?? 1) === 0, written, participants), reviewFollowUps: { fieldsChanged: followFields, rounds }, refused }
 	})
 }
 
@@ -165,7 +170,7 @@ export function writeRipples(outDir: string, requests: Ripple[]): void {
 	renameSync(`${path}.tmp`, path)
 }
 
-const RECOMPUTE_ON = new Set(["change.requested", "change.proposed", "contract.changed", "artifact.ready", "artifact.failed", "consistency.checked", "design.settled"])
+const RECOMPUTE_ON = new Set(["change.requested", "change.proposed", "change.refused", "contract.changed", "artifact.ready", "artifact.failed", "consistency.checked", "design.settled"])
 
 // A plain-code participant that keeps <outDir>/ripples.json current: it records every event it sees and, once a
 // change request has arrived, rewrites the file whenever one of the events a ripple depends on comes in.

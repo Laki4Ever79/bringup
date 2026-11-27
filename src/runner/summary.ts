@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { changeRipples, readTrace } from "./ripple.ts"
 
 // One screen about a finished (or running) run, read from its folder only: the status, the violations, and each
 // built artifact's own verdict (the case's print check, the chassis' interference, the simulated drive, the ROS
@@ -9,7 +10,9 @@ import { join } from "node:path"
 
 export interface ArtifactLine { what: string; revision: number | null; verdict: string; file?: string }
 export interface BoardSummary { board: string; status: string; violations: string[]; artifacts: ArtifactLine[] }
-export interface RunSummary { runId: string; kind: "design" | "system"; status: string; boards: BoardSummary[]; files: string[]; text: string }
+// Each engineer change request and what came of it: the fields it changed, or why it changed nothing.
+export interface RequestOutcome { text: string; changed: string[]; refused: string[] }
+export interface RunSummary { runId: string; kind: "design" | "system"; status: string; boards: BoardSummary[]; files: string[]; text: string; requests?: RequestOutcome[] }
 
 const latestRev = (dir: string): { rev: number; path: string } | null => {
 	if (!existsSync(dir)) return null
@@ -78,7 +81,10 @@ export function runSummary(dir: string, runId: string): RunSummary {
 		if (b.violations.length > 5) lines.push(`  ! ... ${b.violations.length - 5} more`)
 		for (const a of b.artifacts) lines.push(`  ${a.what}${a.revision !== null ? ` (rev ${a.revision})` : ""}: ${a.verdict}`)
 	}
-	return { runId, kind: system ? "system" : "design", status, boards, files, text: lines.join("\n") }
+	// Change requests: a request that changed nothing says so with the refusal's reason, never just "settled".
+	const requests = system ? [] : changeRipples(readTrace(dir)).map((r): RequestOutcome => ({ text: r.text, changed: r.fieldsChanged, refused: (r.refused ?? []).map((x) => `${x.field}: ${x.reason}`) }))
+	for (const q of requests) lines.push(q.changed.length ? `  change "${q.text}": changed ${q.changed.join(", ")}` : `  change "${q.text}": NOT DONE${q.refused.length ? `, refused: ${q.refused.join("; ")}` : ", nothing changed"}`)
+	return { runId, kind: system ? "system" : "design", status, boards, files, text: lines.join("\n"), ...(requests.length ? { requests } : {}) }
 }
 
 // The run before this one of the same design: the newest sibling folder (by name, which starts with its time) whose

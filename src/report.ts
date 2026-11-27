@@ -198,7 +198,9 @@ export function changeRequestsSection(outDir: string): string[] {
 		`| Request | Fields changed | Woken | Consistent again | After it |`,
 		`|---|---|---|---|---|`,
 		...ripples.map((r) => {
-			const again = r.durationMs !== null ? `${(r.durationMs / 1000).toFixed(1)} s` : r.fieldsChanged.length === 0 ? "nothing changed" : "not reached"
+			// A request that changed nothing says why when a proposal was refused (not done, not silently "settled").
+			const why = r.refused?.length ? `: **not done**, refused: ${r.refused.map((x) => `${x.field} (${x.by}): ${x.reason}`).join("; ")}` : ""
+			const again = r.durationMs !== null ? `${(r.durationMs / 1000).toFixed(1)} s` : r.fieldsChanged.length === 0 ? `nothing changed${why}` : "not reached"
 			return `| ${cell(r.text)} | ${r.fieldsChanged.join(", ") || "none"} | ${r.woke.join(", ") || "none"} (${r.woke.length} of ${r.woke.length + r.checked.length + r.stayedIdle.length}${r.checked.length > 0 ? `; ${r.checked.length} more checked, no change: ${r.checked.join(", ")}` : ""}) | ${again} | ${followUps(r.reviewFollowUps)} |`
 		}),
 		``,
