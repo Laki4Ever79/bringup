@@ -224,6 +224,21 @@ void test_with_a_gyro_the_odometry_turns_by_the_heading(void) {
 	TEST_ASSERT_FLOAT_WITHIN(1e-2f, 0.0f, g.x);
 }
 
+// A right wheel 2 % larger (wheelScale 1.02): the same counts on both sides are a gentle left turn, by the same
+// distance as before; at 1 the odometry is what it was.
+void test_a_wheel_scale_turns_equal_counts_into_the_curve_the_wheels_really_make(void) {
+	const float mm = 0.1f, track = 200.0f;
+	RoverOdo a, b;
+	rover_odo_step(a, 0, 0, mm, track, NAN, 1.02f);
+	rover_odo_step(b, 0, 0, mm, track);
+	rover_odo_step(a, 10000, 10000, mm, track, NAN, 1.02f);
+	rover_odo_step(b, 10000, 10000, mm, track, NAN, 1.0f);
+	TEST_ASSERT_FLOAT_WITHIN(1e-3f, 1000.0f, a.lastDs);
+	TEST_ASSERT_FLOAT_WITHIN(1e-4f, 1000.0f * 0.02f / 1.01f / track, a.th);
+	TEST_ASSERT_EQUAL_FLOAT(0.0f, b.th);
+	TEST_ASSERT_FLOAT_WITHIN(1e-3f, 1000.0f, b.x);
+}
+
 int main(int, char **) {
 	UNITY_BEGIN();
 	RUN_TEST(test_no_reading_means_nothing_ahead);
@@ -244,5 +259,6 @@ int main(int, char **) {
 	RUN_TEST(test_quadrature_jitter_on_an_edge_nets_zero);
 	RUN_TEST(test_quadrature_sign_is_learned_from_the_first_drive);
 	RUN_TEST(test_with_a_gyro_the_odometry_turns_by_the_heading);
+	RUN_TEST(test_a_wheel_scale_turns_equal_counts_into_the_curve_the_wheels_really_make);
 	return UNITY_END();
 }

@@ -32,7 +32,10 @@ static inline float rover_wrap(float a) {
 // With a gyro (headingRad not NAN: an IMU on the board, hw_heading_rad) the turn comes from its heading, the distance
 // from the wheels: wheels scrub on a turn in place, so their difference under-reads it (run 20b's S3 in simulation,
 // 19 Nov 2026: 0.679 rad counted for 0.816 turned, a go-to 75 mm off); without one, from the wheels' difference.
-inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerCount, float trackMm, float headingRad = NAN) {
+// wheelScale: the right wheel's travel per count over the left's (1: the same wheels; mechanics.drive.wheelScale,
+// ROVER_WHEEL_SCALE), measured on the floor when a straight run curves while the counts say straight. Each wheel's
+// travel is scaled so their mean is unchanged: distance stays right, only the turn it counts is corrected.
+inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerCount, float trackMm, float headingRad = NAN, float wheelScale = 1.0f) {
 	if (!o.started) {
 		o.lastL = encL;
 		o.lastR = encR;
@@ -40,7 +43,8 @@ inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerC
 		o.started = true;
 		return;
 	}
-	const float dl = (float)(encL - o.lastL) * mmPerCount, dr = (float)(encR - o.lastR) * mmPerCount;
+	const float kl = 2.0f / (1.0f + wheelScale), kr = wheelScale * kl;
+	const float dl = (float)(encL - o.lastL) * mmPerCount * kl, dr = (float)(encR - o.lastR) * mmPerCount * kr;
 	o.lastL = encL;
 	o.lastR = encR;
 	const bool gyro = !isnan(headingRad) && !isnan(o.lastHeading);
@@ -54,6 +58,9 @@ inline void rover_odo_step(RoverOdo &o, int32_t encL, int32_t encR, float mmPerC
 	o.th = rover_wrap(o.th + dth);
 }
 
+#ifndef ROVER_WHEEL_SCALE
+#define ROVER_WHEEL_SCALE 1.0f
+#endif
 #ifndef ROVER_COAST_MM
 #define ROVER_COAST_MM 0.0f
 #endif

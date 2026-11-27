@@ -37,7 +37,7 @@ export interface Mechanics {
 	// differential: two driven wheels on one axle at axleXMm and a caster wheelbaseMm behind it. skid4: four driven wheels,
 	// the front axle at axleXMm and the rear one wheelbaseMm behind it, each side's two motors driven together; no caster
 	// (caster ""). It turns by skidding, so its wheelbase must be shorter than its track (model.ts skidTurn).
-	drive: { kind: "differential" | "skid4"; motor: string; wheel: string; caster: string; trackMm: number; wheelbaseMm: number; axleXMm: number; maxAccelMps2?: number; turnScale?: number; coastMm?: number }
+	drive: { kind: "differential" | "skid4"; motor: string; wheel: string; caster: string; trackMm: number; wheelbaseMm: number; axleXMm: number; maxAccelMps2?: number; turnScale?: number; coastMm?: number; wheelScale?: number }
 	// enclosure "fireproof-bag": the pack is kept permanently in a certified fireproof bag (Eurobot F.4.b, for a lithium pack
 	// that is neither LiFePO4 nor a manufacturer's cased battery with its BMS; the charger goes to homologation).
 	battery: { pack: string; at: { xMm: number; yMm: number }; enclosure?: "fireproof-bag" }

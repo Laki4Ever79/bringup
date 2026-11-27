@@ -52,3 +52,14 @@ test("coastMm is optional, 0 to 200 mm; the firmware gets it as ROVER_COAST_MM, 
 	assert.equal(mechanicsFromRequest("set the coast to 21.5 mm", eurobot().mechanics)!.value.drive.coastMm, 21.5)
 	assert.equal(mechanicsFromRequest("the coast is nice", eurobot().mechanics), null)
 })
+
+test("wheelScale is optional, 0.9 to 1.1; the firmware gets it as ROVER_WHEEL_SCALE, and the request mapper reads it", async () => {
+	const { mechanicsFromRequest } = await import("../src/runner/request-map.ts")
+	const v = eurobot()
+	assert.doesNotMatch(roverHeader({ revision: 1, versions: {} as never, values: v }), /ROVER_WHEEL_SCALE/)
+	v.mechanics.drive.wheelScale = 1.012
+	assert.equal(mechanicsShapeError(v.mechanics), null)
+	assert.match(roverHeader({ revision: 1, versions: {} as never, values: v }), /#define ROVER_WHEEL_SCALE 1\.01200f/)
+	for (const bad of [0.5, 1.3, "1"]) { v.mechanics.drive.wheelScale = bad; assert.match(mechanicsShapeError(v.mechanics) ?? "", /wheelScale/) }
+	assert.equal(mechanicsFromRequest("set the wheel scale to 1.012", eurobot().mechanics)!.value.drive.wheelScale, 1.012)
+})

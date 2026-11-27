@@ -23,6 +23,9 @@ export function mechanicsFromRequest(request: string, current: Mechanics): Field
 	}
 	const turn = /turn scale (?:to |of |= ?)?(\d+(?:\.\d+)?)/i.exec(request)
 	if (turn) return { value: { ...current, drive: { ...current.drive, turnScale: Number(turn[1]) } }, reason: `engineer measured it: ${request} (the odometry's track times this; rover_odo.h RoverCal)` }
+	// "set the wheel scale to 1.012": the right wheel's travel per count over the left's, from a straight run measured on the floor.
+	const wheel = /\bwheel scale (?:to |of |= ?)?(\d+(?:\.\d+)?)/i.exec(request)
+	if (wheel) return { value: { ...current, drive: { ...current.drive, wheelScale: Number(wheel[1]) } }, reason: `engineer measured it: ${request} (each wheel's travel per count; rover_odo.h ROVER_WHEEL_SCALE)` }
 	// "set the coast to 21.5 mm": how far it rolls on after a stop, from a turn calibration (the go-to's first stop allows for it).
 	const coast = /\bcoast (?:to |of |= ?)?(\d+(?:\.\d+)?)\s*mm\b/i.exec(request)
 	if (coast) return { value: { ...current, drive: { ...current.drive, coastMm: Number(coast[1]) } }, reason: `engineer measured it: ${request} (the go-to stops that much early; rover_odo.h ROVER_COAST_MM)` }
