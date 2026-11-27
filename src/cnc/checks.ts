@@ -4,6 +4,7 @@ import type { MechViolation } from "../mechanics/checks.ts"
 import { CNC_AXES, type CncAxis } from "./types.ts"
 import { estopChecks, spindleSenseChecks } from "./estop.ts"
 import { grblhalPins } from "./grblhal.ts"
+import { fluidncPinProblems, fluidncPins } from "./fluidnc.ts"
 
 // The stepper driver's continuous RMS current per coil: the board's stepper-driver part's, from catalog/parts.json (the
 // TMC2209-LA: 1.4 A, its datasheet's design guideline), or that chip's when the board has none yet.
@@ -67,6 +68,13 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	if (m.firmware === "grblhal" && values.parts && values.pins?.length) {
 		const { missing } = grblhalPins({ revision: 0, versions: {} as never, values })
 		if (missing.length) out.push({ kind: "cnc-wiring", message: `grblHAL's board map needs a GPIO for ${missing.join(", ")} (the signals by those names in pins): assign each to a free MCU pin with its part's pin`, fields: ["pins"], affects: ["architect"] })
+	}
+	// FluidNC's config.yaml (src/cnc/fluidnc.ts) names the same signals, and the classic ESP32 limits where they may go.
+	if (m.firmware === "fluidnc" && values.parts && values.pins?.length) {
+		const snap = { revision: 0, versions: {} as never, values }
+		const { missing } = fluidncPins(snap)
+		if (missing.length) out.push({ kind: "cnc-wiring", message: `FluidNC's config.yaml needs a GPIO for ${missing.join(", ")} (the signals by those names in pins): assign each to a free MCU pin with its part's pin`, fields: ["pins"], affects: ["architect"] })
+		for (const problem of fluidncPinProblems(snap)) out.push({ kind: "cnc-wiring", message: `${problem}: move it to another free GPIO (not 34-39 for an output or a switch, not a strapping pin)`, fields: ["pins"], affects: ["architect"] })
 	}
 	// The motors' supply: a rail at the brick's volts for the drivers' VS (the TMC2209's 5.5–29 V).
 	if (values.rails && drivers && !values.rails.some((r) => Math.abs(r.voltageV - m.input.volts) < 0.5)) out.push({ kind: "cnc-wiring", message: `the board has no ${m.input.volts} V rail for the stepper drivers' motor supply (VS) from the ${m.input.volts} V brick: add it to rails (rails: ${values.rails.map((r) => `${r.name} ${r.voltageV} V`).join(", ")})`, fields: ["rails"], affects: ["architect"] })
