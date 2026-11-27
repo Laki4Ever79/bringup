@@ -93,6 +93,26 @@ test("a run's contract and trace reach the fake server; a trace append is sent a
 	}
 })
 
+test("a run that ends with more unsent than one batch: stop() sends every file, the drive results included", async () => {
+	const studio = fakeStudio()
+	const url = await studio.start()
+	const dir = tempDir()
+	// Started with a long interval, so the loop makes one pass and stop() has the rest to send: three 3.5 MB board files
+	// (more than one 8 MB batch) and the simulated drive written at the end.
+	const conn = startConnector(dir, "run-1", { url, token: TOKEN, intervalMs: 60_000 })
+	await conn.synced()
+	const { mkdirSync } = await import("node:fs")
+	mkdirSync(join(dir, "board"), { recursive: true })
+	mkdirSync(join(dir, "drive", "rev-3"), { recursive: true })
+	for (const n of [1, 2, 3]) writeFileSync(join(dir, "board", `big-${n}.bin`), Buffer.alloc(3_500_000, n))
+	writeFileSync(join(dir, "drive", "rev-3", "drive.json"), JSON.stringify({ result: "pass" }))
+	writeFileSync(join(dir, "drive", "rev-3", "scorecard.json"), JSON.stringify({ revision: 3 }))
+	try {
+		await conn.stop()
+		for (const f of ["board/big-1.bin", "board/big-2.bin", "board/big-3.bin", "drive/rev-3/drive.json", "drive/rev-3/scorecard.json"]) assert.ok(studio.files.has(f), `${f} reached Studio`)
+	} finally { await studio.close() }
+})
+
 test("a command from the server lands in requests.jsonl, once, and survives a restart", async () => {
 	const s = fakeStudio()
 	const url = await s.start()

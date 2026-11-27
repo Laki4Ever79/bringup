@@ -16,6 +16,8 @@ import { diffFile, fileState, syncable, type Command, type FileChange, type File
 export const MAX_BACKOFF_MS = 30_000
 // One sync request carries at most this much file data; the rest goes on the next tick.
 export const MAX_BATCH_BYTES = 8 * 1024 * 1024
+// The final sync at a run's end sends up to this many batches (8 MB each): 512 MB, more than any run folder.
+export const FINAL_BATCHES = 64
 // A long poll is held by the server up to about 25 s; the client gives up a little later and asks again.
 export const POLL_TIMEOUT_MS = 35_000
 
@@ -184,7 +186,12 @@ export function startConnector(runDir: string, runId: string, opts: ConnectorOpt
 			cancel.abort()
 			for (const w of wake.splice(0)) w()
 			await Promise.allSettled(loops)
-			await syncOnce().catch((e) => unreachable("final sync", e))
+			// Batch after batch (one is at most MAX_BATCH_BYTES, and a run often ends with more unsent than that: the
+			// board, the simulated drives) until nothing is left, at most FINAL_BATCHES.
+			for (let i = 0; i < FINAL_BATCHES; i++) {
+				const done = await syncOnce().catch((e) => (unreachable("final sync", e), true))
+				if (done) break
+			}
 		},
 	}
 }
