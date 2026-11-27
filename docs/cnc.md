@@ -177,3 +177,14 @@ Each failure on the way, with its general fix.
   had only PA9 (TX) straight on PDN_UART, so it could write the drivers and never read them back; now RX (PA10) is on
   the line and TX joins it through 1 kΩ (R20). Open: the spindle's stall stop needs a current sense the board doesn't
   have; building grblHAL itself (its repository with submodules, tens of MB, project-local) is the next step.
+- 27 Nov 2026, gap 11 (part 2): grblHAL builds for the board. Its STM32F4xx driver cloned into the gitignored tools/
+  (39 MB with submodules; GPLv3, so never copied into this repo, where only our generated map and settings live):
+  `git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/grblHAL/STM32F4xx.git
+  tools/grblhal-STM32F4xx`. Its source settled what part 1 marked unverified: USART1 is SERIAL_PORT 1 (PA9/PA10), the
+  Trinamic stream instance 0 (its default, 1, is a second serial port); NC switches to ground are its default polarity
+  ($5=0, $14=0); an asserted e-stop raises the EStop alarm ("blocks everything until cleared") and after the reset it
+  stays in alarm until unlocked. First build: two errors, both fixed in the generated files, not in grblHAL: the probe
+  input on by default with no probe pin (PROBE_ENABLE=0), and the PWM-only spindle not building upstream (driver_spindles.c
+  calls a one-argument spindle_dir() with two), so the spindle is PWM without direction, its enable on a spare GPIO wired to
+  nothing. Built 27 Nov 2026 (STM32F4xx b0cd1bb): RAM 16.9 %, flash 41.9 % (test/cnc-grblhal.int.test.ts, skipped without
+  the clone). The firmware folder's grblhal/ now has platformio_env.ini too.

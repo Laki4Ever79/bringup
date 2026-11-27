@@ -23,7 +23,7 @@ test("the board map names every pin from the contract: STEP/DIR per motor (Y2 as
 	const map = grblhalMap(s)
 	for (const line of ["#define X_STEP_PORT GPIOA", "#define X_STEP_PIN 0", "#define Z_DIRECTION_PORT GPIOB", "#define Z_DIRECTION_PIN 10", "#define M3_STEP_PIN 6", "#define STEPPERS_ENABLE_PIN 2", "#define X_LIMIT_PIN 13", "#define SPINDLE_PWM_PIN 8", "#define RESET_PORT GPIOB", "#define RESET_PIN 12", "#define TRINAMIC_UART_ENABLE 1", "#define STEP_OUTMODE GPIO_BITBAND"])
 		assert.ok(map.includes(line), line)
-	assert.match(map, /UNVERIFIED: TRINAMIC_STREAM/, "what grblHAL's sources didn't settle says so")
+	for (const line of ["#define SERIAL_PORT 1", "#define TRINAMIC_STREAM 0"]) assert.ok(map.includes(line), line)
 })
 
 test("the settings come from the machine, and hold the no-restart requirement (homing on, the boot alarm forced)", () => {
