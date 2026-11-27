@@ -14,8 +14,8 @@ jobs:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # The tools go to ~/.bringup, the runner's own (a job-level env can't name runner.temp: the first dispatch was refused).
     env:
-      BRINGUP_HOME: ${{ runner.temp }}/bringup-home
       BRINGUP_TOOLCHAIN: local
     steps:
       - uses: actions/checkout@v4

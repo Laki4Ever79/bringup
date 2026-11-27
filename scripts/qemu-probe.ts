@@ -5,7 +5,7 @@
 // occurred!") in a loop, while Linux and macOS boot it at once. One run compares the settings side by side.
 // usage: npx tsx scripts/qemu-probe.ts [seconds per variant, default 40]
 import { spawn } from "node:child_process"
-import { appendFileSync, existsSync, mkdtempSync, readFileSync } from "node:fs"
+import { appendFileSync, copyFileSync, existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ContractSnapshot } from "../src/contract/types.ts"
@@ -30,11 +30,17 @@ const fw = join(mkdtempSync(join(tmpdir(), "qemu-probe-")), "fw")
 const s: ContractSnapshot = { revision: 1, versions: {} as never, values: JSON.parse(JSON.stringify(ROVER_BOARD)) }
 await prepareFirmware(root, fw, s)
 const t0 = Date.now()
-const build = await run(env.pio, ["run", "-d", fw, "-e", target.simEnv], { timeoutMs: 1_800_000 })
-if (build.code !== 0) throw new Error(`the simulation firmware didn't build: ${(build.stdout + build.stderr).slice(-1500)}`)
-const { image, log } = await mergeFlash(fw, target.simEnv, target.chip)
-if (!image) throw new Error(`no flash image: ${log}`)
-say(`### ${process.platform}: QEMU probe (firmware built in ${Math.round((Date.now() - t0) / 1000)} s)\n`)
+// Two images: the firmware as it is, and with its stack guard's interrupt masked (SIM_NO_STACK_GUARD_IRQ, hw_sim.cpp).
+const images: Record<string, string> = {}
+for (const [name, flags] of [["plain", ""], ["stack-guard IRQ masked", "-DSIM_NO_STACK_GUARD_IRQ"]] as const) {
+	const build = await run(env.pio, ["run", "-d", fw, "-e", target.simEnv], { timeoutMs: 1_800_000, env: { ...(process.env as Record<string, string>), PLATFORMIO_BUILD_FLAGS: flags } })
+	if (build.code !== 0) throw new Error(`the simulation firmware (${name}) didn't build: ${(build.stdout + build.stderr).slice(-1500)}`)
+	const { image, log } = await mergeFlash(fw, target.simEnv, target.chip)
+	if (!image) throw new Error(`no flash image: ${log}`)
+	images[name] = join(fw, `flash-${name.replace(/\W+/g, "_")}.bin`)
+	copyFileSync(image, images[name])
+}
+say(`### ${process.platform}: QEMU probe (both firmwares built in ${Math.round((Date.now() - t0) / 1000)} s)\n`)
 
 const VARIANTS: [string, string[]][] = [
 	["icount 3 (sleep on)", ["-icount", "3"]],
@@ -42,7 +48,9 @@ const VARIANTS: [string, string[]][] = [
 	["icount shift=auto", ["-icount", "shift=auto"]],
 	["no icount", []],
 ]
-for (const [name, icount] of VARIANTS) {
+for (const [fwName, image] of Object.entries(images))
+for (const [icountName, icount] of VARIANTS) {
+	const name = `${fwName}, ${icountName}`
 	const uart0 = join(fw, `uart0-${name.replace(/\W+/g, "_")}.txt`)
 	const args = ["-display", "none", "-machine", target.machine, ...icount, "-drive", `file=${image},if=mtd,format=raw`, "-global", `driver=timer.${target.machine}.timg,property=wdt_disable,value=true`, "-serial", `file:${uart0}`, "-serial", "null"]
 	const q = spawn(qemu, args, { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, ...qemuEnv(root) } })

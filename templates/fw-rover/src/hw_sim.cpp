@@ -17,6 +17,16 @@ static float heading = NAN;
 
 void hw_begin(void) { Serial1.begin(921600); }
 
+// SIM_NO_STACK_GUARD_IRQ (the simulation build only, never the board's): the ESP32-C3's stack guard (its debug-assist
+// interrupt, CPU line 27) masked before loopTask starts. Espressif's Windows QEMU raised it with nothing tripped and the
+// firmware panicked in a loop ("Stack protection fault ... ASSIST_DEBUG is not triggered BUT interrupt occurred!", MCAUSE
+// 27; GitHub's Windows runner, 27 Nov 2026). Arduino calls initVariant() from initArduino(), before loopTask.
+#if defined(SIM_NO_STACK_GUARD_IRQ) && defined(CONFIG_IDF_TARGET_ESP32C3)
+#include "riscv/interrupt.h"
+#include "soc/soc.h"
+extern "C" void initVariant(void) { esprv_int_disable(1u << ETS_ASSIST_DEBUG_INUM); }
+#endif
+
 void hw_motor(int side, float d) { duty[side & 1] = d; }
 
 int hw_distance_mm(void) {
