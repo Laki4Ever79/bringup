@@ -187,7 +187,11 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		{ signal: "LIMIT_X", gpio: f411("PB13"), partRef: "JL1", partPin: "SIG" },
 		{ signal: "LIMIT_Y", gpio: f411("PB14"), partRef: "JL2", partPin: "SIG" },
 		{ signal: "LIMIT_Z", gpio: f411("PB15"), partRef: "JL3", partPin: "SIG" },
-		{ signal: "STEPPER_UART", gpio: f411("PA9"), partRef: "U4", partPin: "PDN_UART" },
+		// The drivers' one single-wire UART (TMC2209 §4: PDN_UART): grblHAL's shared Trinamic stream is a full-duplex USART
+		// (TRINAMIC_UART_ENABLE 1, addresses by motor index), so RX (PA10) sits on the line and TX (PA9) joins it through
+		// 1 kΩ (R20). PA9 straight onto the line, as before, could write the drivers and never read them back.
+		{ signal: "STEPPER_UART", gpio: f411("PA10"), partRef: "U4", partPin: "PDN_UART" },
+		{ signal: "STEPPER_UART_TX", gpio: f411("PA9"), partRef: "R20", partPin: "pin1" },
 		{ signal: "STATUS_LED", gpio: f411("PC13"), partRef: "D1", partPin: "A" },
 		// The spindle's speed: TIM1_CH1 PWM on PA8, into the 5 V gate driver (gap 6).
 		{ signal: "SPINDLE_PWM", gpio: f411("PA8"), partRef: "U8", partPin: "A" },
@@ -209,6 +213,7 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		catalogPart("KF128R-5.08-2P", "J3", { POS: "@VMOT_SW", NEG: "@SPINDLE_N" }),
 		// The emergency stop (gap 7): its power switch (VMOT to VMOT_SW, gate held on through the e-stop's NC loop), the OR
 		// gate that disables every driver on a stop, the e-stop's plug, and a limit switch's plug per axis.
+		{ ref: "R20", role: "resistor", mpn: "0402WGF1001TCE", lcsc: "C11702", footprint: "0402", pins: ["pin1", "pin2"], nets: { pin2: "@STEPPER_UART" } },
 		catalogPart("AO4407A", "Q2"),
 		catalogPart("SN74LVC1G32DBVR", "U9"),
 		catalogPart("B2B-XH-A-R(LF)(SN)", "JE1", { LOOP: "@ESTOP_LOOP" }),

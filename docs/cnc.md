@@ -165,3 +165,15 @@ Each failure on the way, with its general fix.
   chip's catalog entry wires it elsewhere: the spindle buffer's VCC sat on 5 V and, by its name, on 3.3 V, shorting them
   (gap 6's design, caught by the gap 7 test); the plugs are their own catalog parts (the datasheet check refuses pins
   renamed per design); header pads (pinrowN) are known to the reach check.
+- 27 Nov 2026, gap 11 (part 1): grblHAL's configuration from the contract, without its download. The firmware folder
+  gets grblhal/my_machine_map.h (the STM32F4xx driver's board map: per-axis STEP/DIR ports, the ganged Y2 as M3, the
+  shared enable, the limits, the spindle's PWM, the e-stop's trip as RESET, the drivers' shared Trinamic UART),
+  settings.txt ($100-132 from the stepper's step angle, the microsteps, the screw's lead, the rapids and the travel;
+  limits and homing on; $64=1, the boot alarm forced: the no-restart requirement) and README.txt (how to build grblHAL
+  with it). Macro and setting names read in grblHAL's sources (STM32F4xx boards/, Src/tmc_uart.c; core settings.h);
+  what they didn't settle is marked UNVERIFIED in the files (TRINAMIC_STREAM's number, the NC inputs' polarity, the
+  custom-board recipe). cncChecks reports a signal the map needs that has no pin. Found on the way, a board bug: grblHAL's
+  shared Trinamic mode is a full-duplex USART (addresses by motor index: X 0, Y 1, Z 2, M3 3, as our straps), and the board
+  had only PA9 (TX) straight on PDN_UART, so it could write the drivers and never read them back; now RX (PA10) is on
+  the line and TX joins it through 1 kΩ (R20). Open: the spindle's stall stop needs a current sense the board doesn't
+  have; building grblHAL itself (its repository with submodules, tens of MB, project-local) is the next step.

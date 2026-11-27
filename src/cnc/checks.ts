@@ -3,6 +3,7 @@ import type { MechCatalog, StepperPart } from "../mechanics/catalog.ts"
 import type { MechViolation } from "../mechanics/checks.ts"
 import { CNC_AXES, type CncAxis } from "./types.ts"
 import { estopChecks } from "./estop.ts"
+import { grblhalPins } from "./grblhal.ts"
 
 // The stepper driver's continuous RMS current per coil: the board's stepper-driver part's, from catalog/parts.json (the
 // TMC2209-LA: 1.4 A, its datasheet's design guideline), or that chip's when the board has none yet.
@@ -60,6 +61,12 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	for (const d of (values.parts ?? []).filter((p) => p.role === "stepper-driver")) {
 		const need = [["STEP", "STEP"], ["DIR", "DIR"], ...(gate ? [] : [["EN", "ENN"]])].filter(([, pin]) => d.pins.includes(pin) && !pins.some((p) => p.partRef === d.ref && p.partPin === pin))
 		if (need.length) out.push({ kind: "cnc-wiring", message: `the stepper driver ${d.ref} (${d.mpn}) has no GPIO on ${need.map(([, pin]) => pin).join(", ")}: assign each to a free MCU GPIO with partRef ${d.ref} and partPin ${need.map(([, pin]) => pin).join("/")} (signals named per axis, e.g. X_${need[0][0]})`, fields: ["pins"], affects: ["architect"] })
+	}
+	// grblHAL's board map (gap 11, src/cnc/grblhal.ts) names a pin for each of these: one missing is a map that can't be
+	// written, so the firmware's configuration would be a guess.
+	if (m.firmware === "grblhal" && values.parts && values.pins?.length) {
+		const { missing } = grblhalPins({ revision: 0, versions: {} as never, values })
+		if (missing.length) out.push({ kind: "cnc-wiring", message: `grblHAL's board map needs a GPIO for ${missing.join(", ")} (the signals by those names in pins): assign each to a free MCU pin with its part's pin`, fields: ["pins"], affects: ["architect"] })
 	}
 	// The motors' supply: a rail at the brick's volts for the drivers' VS (the TMC2209's 5.5–29 V).
 	if (values.rails && drivers && !values.rails.some((r) => Math.abs(r.voltageV - m.input.volts) < 0.5)) out.push({ kind: "cnc-wiring", message: `the board has no ${m.input.volts} V rail for the stepper drivers' motor supply (VS) from the ${m.input.volts} V brick: add it to rails (rails: ${values.rails.map((r) => `${r.name} ${r.voltageV} V`).join(", ")})`, fields: ["rails"], affects: ["architect"] })

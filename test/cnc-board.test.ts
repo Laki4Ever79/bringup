@@ -20,7 +20,9 @@ test("the scripted CNC's drivers: VS on the 24 V rail, one shared UART, addresse
 	// After the e-stop switch (gap 7): the drivers on VMOT_SW, the brick's jack on VMOT before it.
 	assert.deepEqual(nets.get("VMOT_SW")!.filter((e) => /^U\d\.VS/.test(e)).sort(), ["U4.VS", "U4.VS2", "U5.VS", "U5.VS2", "U6.VS", "U6.VS2", "U7.VS", "U7.VS2"])
 	assert.ok(nets.get("VMOT")!.includes("J2.VIN"), "the brick's jack feeds it")
-	assert.deepEqual(nets.get("STEPPER_UART")!.sort(), ["U4.PDN_UART", "U5.PDN_UART", "U6.PDN_UART", "U7.PDN_UART"])
+	// RX on the line, TX through R20's 1 kΩ (grblHAL's shared Trinamic stream is a full-duplex USART).
+	assert.deepEqual(nets.get("STEPPER_UART")!.sort(), ["R20.pin2", "U4.PDN_UART", "U5.PDN_UART", "U6.PDN_UART", "U7.PDN_UART"])
+	assert.ok(s.values.pins!.some((p) => p.signal === "STEPPER_UART_TX" && p.partRef === "R20" && p.partPin === "pin1"), "TX into R20")
 	for (const [motor, driver, plug] of [["X", "U4", "JX1"], ["Y1", "U5", "JX2"], ["Y2", "U6", "JX3"], ["Z", "U7", "JX4"]])
 		for (const [coil, out] of [["A1", "OA1"], ["A2", "OA2"], ["B1", "OB1"], ["B2", "OB2"]]) assert.deepEqual(nets.get(`${motor}_${coil}`)!.sort(), [`${driver}.${out}`, `${plug}.${coil}`].sort())
 	// The UART addresses: X, Y and Z their axes' (0, 1, 2), the gantry's second Y motor the free one (3); the straps follow.
