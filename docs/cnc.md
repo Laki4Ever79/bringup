@@ -233,3 +233,13 @@ Each failure on the way, with its general fix.
   revision 6, before the power tree; the revision-9 board is the CNC's routing density (">50 traces left unrouted"),
   bringup-board's next item. Found on the way: checks.ts -> fluidnc.ts -> grblhal.ts -> checks.ts read the signal
   list before it was set when grblhal.ts loaded first (firmware-log.test.ts); the list now lives in cnc/signals.ts.
+- 27 Nov, gap 2 (what the agents must write): the scripted CNC hand-wrote nine parts' nets that no prompt explained and
+  almost no check caught. A probe took each part's nets out in turn. The jack's (no 24 V), the e-stop plug's loop (an
+  e-stop that can never trip) and the UART TX resistor's (drivers never read back) left no violation at all. The motor
+  plugs, the spindle's MOSFET and its terminal gave only "connected to nothing", with no hint which net. Fix, in code
+  (src/cnc/wiring-auto.ts, applied by the contract tools on every CNC parts, pins, rails or cnc write, missing nets
+  only): the board's nets are the hand-wired design's, pin for pin. The mock now writes the CNC parts bare, as an agent
+  would, and the parts prompt says the tools wire them. Found on the way: the power tree finds the brick by the jack's
+  VIN, so on a bare jack it never ran (U8.VCC on no net); the wiring now goes first. `--no-hardware` mocks of both CNC
+  briefs: adopt UNSETTLED rev 9 with 1 violation (space-slack, 100×80) → settled rev 12 with 0 (80×64, 2% over its
+  smallest).
