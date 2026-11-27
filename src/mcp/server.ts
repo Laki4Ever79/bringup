@@ -153,12 +153,22 @@ function exitState(code: number, stderr: string): RunState {
 
 // MCP face of Bringup: a coding agent starts runs and reads their contract, report and trace. Runs go on
 // in the background; every read comes from out/<runId>/ and never leaves outRoot.
+// What the agent reads first (a newcomer's first run through Claude Code, 27 Nov 2026, got no overview: 15 tools and
+// nothing saying which comes first, that runs are free by default, or that installs need the user's yes).
+export const SERVER_INSTRUCTIONS = `Bringup turns a short product brief into a hardware design whose parts agree: parts list, schematic and routed PCB, printed case or robot parts, firmware, simulation, and a report of every check.
+
+Usual flow: start_design with the user's brief (it returns a runId at once), poll design_status every few seconds until it is no longer running, then run_summary for what was built and the files to open. To change a design, start it with stay: true and use request_change ("make it 50 mm wide"); a design whose run has ended is changed through continue_design. list_starters has example briefs.
+
+Cost: runs are scripted mocks by default, free and offline. Real models cost money: they need mock: false, realModels: true and a plan from plan_design that the user approved through approve_plan. Never start one without the user asking for it.
+
+Tools: without the hardware tools installed, the design is complete but the board, case and firmware are stubbed; start_design and run_summary say which command installs each. Installing downloads hundreds of MB, so ask the user first, then run \`npx bringup-mcp setup <board|case|firmware>\` or start again with installTools: true.`
+
 export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	const runs = new Map<string, RunState>()
 	const kills = new Map<string, () => void>()
 	const stays = new Set<string>()
 	const root = deps.root ?? ROOT
-	const server = new McpServer({ name: "bringup", version: SERVER_VERSION })
+	const server = new McpServer({ name: "bringup", version: SERVER_VERSION }, { instructions: SERVER_INSTRUCTIONS })
 	async function hardwareFlags(hardware: "auto" | "build" | "stub" | undefined): Promise<{ flags: string[]; said: string }> {
 		if (hardware === "stub") return { flags: ["--no-hardware"], said: "stubbed (asked)" }
 		const env = await (deps.detect ?? (() => detectEnvironment(root)))()

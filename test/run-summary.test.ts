@@ -35,3 +35,16 @@ test("the summary finds the last run of the same brief and says what changed, be
 	mkdirSync(join(out, "empty"))
 	assert.equal(summaryExitCode(runSummary(join(out, "empty"), "empty")), 1, "no report: not settled, not unsettled")
 })
+
+test("a stubbed part names the setup command that builds it, and the files list what a tool-less run wrote", () => {
+	const dir = join(tempDir(), "r")
+	mkdirSync(join(dir, "board", "rev-3"), { recursive: true })
+	mkdirSync(join(dir, "enclosure", "rev-3"), { recursive: true })
+	writeFileSync(join(dir, "report.md"), "# Report\n\nStatus: settled at contract revision 3\n\nViolations: 0\n")
+	for (const f of ["bom.json", "contract.json", "bringup.md"]) writeFileSync(join(dir, f), "{}")
+	const s = runSummary(dir, "r")
+	const [board, kase] = s.boards[0].artifacts
+	assert.match(board.verdict, /npx bringup-mcp setup board/)
+	assert.match(kase.verdict, /npx bringup-mcp setup case/)
+	assert.deepEqual(s.files, ["report.md", "bom.json", "contract.json", "bringup.md"].map((f) => join(dir, f)))
+})

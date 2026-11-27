@@ -94,7 +94,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				// A robot's power tree is decided in code from its pack and regulator (contract/power-auto.ts): every parts write
 				// lands it complete (real run 19b spent 19 revisions on it by hand).
 				// A CNC (cncTargets): its logic's 5 V from the brick, the power tree decided in code as an arm's is (CNC gap 6).
-				if (args.field === "parts" && Array.isArray(args.value) && !s.contract.get("motion") && !s.contract.get("arm") && s.contract.get("cncTargets")) {
+				if (args.field === "parts" && Array.isArray(args.value) && !s.contract.get("motion") && !s.contract.get("arm") && (s.contract.get("cncTargets") || s.contract.get("cnc"))) {
 					const t = completePowerTree(args.value as NonNullable<ContractValues["parts"]>, undefined, s.contract.snapshot())
 					if (t.note) {
 						args = { ...args, value: t.parts as ContractValues[FieldName] }
@@ -273,6 +273,13 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 						const t = completePowerTree(outs.parts, undefined, { ...snap, values: { ...snap.values, arm } })
 						const why = [outs.note, t.note].filter(Boolean).join("; ")
 						if (why && follow("parts", t.parts, `the arm changed: ${why}`)) laidOutNote = [laidOutNote, why].filter(Boolean).join("; ")
+					}
+					// A CNC's power tree (the brick's 5 V step-down and the OR-ing diodes) also on the write that makes it a CNC or
+					// names its brick's rail, not only on a parts write: the parts usually come first (CNC mock 14: parts at revision
+					// 2, rails 5, cncTargets 7), so the tree was never built and the spindle buffer's VCC had no 5 V net.
+					if ((args.field === "cncTargets" || args.field === "cnc" || args.field === "rails") && s.contract.get("parts") && !s.contract.get("motion") && !s.contract.get("arm") && (s.contract.get("cncTargets") || s.contract.get("cnc"))) {
+						const t = completePowerTree(s.contract.get("parts")!, undefined, s.contract.snapshot())
+						if (t.note && follow("parts", t.parts, t.note)) laidOutNote = [laidOutNote, t.note].filter(Boolean).join("; ")
 					}
 					// An arm's servo rails and brick input go into the contract's rails with their peak, sized like any rail
 					// (lead-2, 26 Nov 2026), on any write that changes them (the arm, its parts, the rails themselves).

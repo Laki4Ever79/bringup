@@ -31,7 +31,10 @@ function boardSummary(dir: string, board: string): BoardSummary {
 	const artifacts: ArtifactLine[] = []
 	// A folder alone isn't a build: a stubbed or skipped build (no toolchain, --no-hardware) leaves it empty.
 	const ended = report !== ""
-	const absent = ended ? "not built (stubbed, or its tool is missing: the report says which)" : "building"
+	// A stubbed build names the one command that makes it real (a newcomer's first, tool-less run, 27 Nov 2026, read
+	// "not built (stubbed, or its tool is missing: the report says which)" for every part).
+	const needs = (domain: string) => (ended ? `not built: its tools aren't installed (\`npx bringup-mcp setup ${domain}\`, after your user says yes)` : "building")
+	const absent = needs("board")
 	const b = latestRev(join(dir, "board"))
 	if (b) {
 		const drc = json(join(b.path, "drc.json"))
@@ -41,12 +44,12 @@ function boardSummary(dir: string, board: string): BoardSummary {
 	const e = latestRev(join(dir, "enclosure"))
 	if (e) {
 		const p = json(join(e.path, "print.json"))
-		artifacts.push({ what: "case", revision: e.rev, verdict: p ? (p.ok ? "print check ok" : `print check: ${p.issues.join("; ")}`) : existsSync(join(e.path, "case.stl")) ? "built" : absent, file: existsSync(join(e.path, "case.stl")) ? join(e.path, "case.stl") : undefined })
+		artifacts.push({ what: "case", revision: e.rev, verdict: p ? (p.ok ? "print check ok" : `print check: ${p.issues.join("; ")}`) : existsSync(join(e.path, "case.stl")) ? "built" : needs("case"), file: existsSync(join(e.path, "case.stl")) ? join(e.path, "case.stl") : undefined })
 	}
 	const c = latestRev(join(dir, "chassis"))
 	if (c) {
 		const i = json(join(c.path, "mounts.json"))?.interference
-		artifacts.push({ what: "chassis", revision: c.rev, verdict: i ? `interference: ${i.pairs} pairs, ${i.clashes.length} clash(es), ${i.unmeasured.length} unmeasured` : existsSync(join(c.path, "chassis.stl")) ? "built" : absent, file: existsSync(join(c.path, "chassis.stl")) ? join(c.path, "chassis.stl") : undefined })
+		artifacts.push({ what: "chassis", revision: c.rev, verdict: i ? `interference: ${i.pairs} pairs, ${i.clashes.length} clash(es), ${i.unmeasured.length} unmeasured` : existsSync(join(c.path, "chassis.stl")) ? "built" : needs("case"), file: existsSync(join(c.path, "chassis.stl")) ? join(c.path, "chassis.stl") : undefined })
 		const urdf = existsSync(join(c.path, "ros", "src")) ? readdirSync(join(c.path, "ros", "src")).map((p) => join(c.path, "ros", "src", p, "urdf")).find((p) => existsSync(p)) : undefined
 		if (urdf) artifacts.push({ what: "ROS package", revision: c.rev, verdict: "URDF and controllers written", file: urdf })
 	}
@@ -65,7 +68,9 @@ export function runSummary(dir: string, runId: string): RunSummary {
 		: [boardSummary(dir, "main")]
 	const sysReport = system && existsSync(join(dir, "system-report.md")) ? readFileSync(join(dir, "system-report.md"), "utf8") : ""
 	const status = system ? (/^Status: (.+)$/m.exec(sysReport)?.[1] ?? "running (no report yet)") : boards[0].status
-	const files = [system ? join(dir, "system-report.md") : join(dir, "report.md"), ...boards.flatMap((b) => b.artifacts.map((a) => a.file).filter((f): f is string => Boolean(f)))].filter((f) => existsSync(f))
+	// With or without tools: the parts list, the contract and the bring-up sheet are always worth opening.
+	const always = system ? [] : ["bom.json", "contract.json", "bringup.md"].map((f) => join(dir, f))
+	const files = [system ? join(dir, "system-report.md") : join(dir, "report.md"), ...always, ...boards.flatMap((b) => b.artifacts.map((a) => a.file).filter((f): f is string => Boolean(f)))].filter((f) => existsSync(f))
 	const lines = [`${runId}: ${status}`]
 	for (const b of boards) {
 		if (system) lines.push(`${b.board}: ${b.status}`)

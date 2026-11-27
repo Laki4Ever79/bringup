@@ -384,6 +384,11 @@ test("bin/bringup-mcp.js speaks MCP on stdio: handshake, every tool listed, safe
 	try {
 		assert.equal(client.getServerVersion()?.name, "bringup")
 		const names = (await client.listTools()).tools.map((t) => t.name).sort()
+		// The overview the agent reads first: the flow, that mocks are free, and that installs need the user's yes.
+		const instructions = client.getInstructions() ?? ""
+		assert.match(instructions, /start_design[\s\S]*design_status[\s\S]*run_summary/)
+		assert.match(instructions, /free/)
+		assert.match(instructions, /ask the user first/)
 		assert.deepEqual(names, ["approve_plan", "continue_design", "design_status", "export_package", "get_report", "list_events", "list_part_refs", "list_starters", "plan_design", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
 		const refused: any = await client.callTool({ name: "start_design", arguments: { brief: "x", mock: false } })
 		assert.equal(refused.isError, true)
