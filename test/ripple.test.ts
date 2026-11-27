@@ -289,10 +289,12 @@ test("a robot's mechanics change wakes the mechanics engineer, the chassis and t
 		ev(10_005, "contract.changed", { field: "mechanics", version: 2, revision: 6, by: "mechanics" }),
 		checked(10_006, 6, 0),
 		ev(12_000, "artifact.ready", { kind: "chassis", revision: 6 }),
+		// The firmware rebuilds on mechanics too: its hw_pins.h is written from mechanics and motion (27 Nov 2026).
+		ev(30_000, "artifact.ready", { kind: "firmware", revision: 6 }),
 		ev(90_000, "artifact.ready", { kind: "drive", revision: 6 }),
 	]
 	const [r] = changeRipples(trace)
-	assert.deepEqual(r.woke, ["mechanics", "build:chassis", "build:drive", "consistency"])
+	assert.deepEqual(r.woke, ["mechanics", "build:firmware", "build:chassis", "build:drive", "consistency"])
 	assert.equal(r.consistentAtMs, 90_000)
 	assert.ok(!r.stayedIdle.includes("mechanics"))
 })

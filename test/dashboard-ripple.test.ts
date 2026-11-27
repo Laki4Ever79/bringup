@@ -318,10 +318,12 @@ test("ripple: a robot's change wakes the mechanics tiles, and its headline names
 		changed(101, "mechanics", 2, 2, "mechanics"),
 		checked(102, 2, 0),
 		ev(130, "artifact.ready", { kind: "chassis", revision: 2 }),
+		// The firmware rebuilds on mechanics too: its hw_pins.h is written from mechanics and motion (27 Nov 2026).
+		ev(150, "artifact.ready", { kind: "firmware", revision: 2 }),
 		ev(190, "artifact.ready", { kind: "drive", revision: 2 }),
 	]
 	const [r] = liveRipples(rover, [{ at: at(100), text: "make it 2 cm narrower" }], T0 + 300_000)
-	assert.deepEqual(r.woke, ["mechanics", "build:chassis", "build:drive", "consistency"])
+	assert.deepEqual(r.woke, ["mechanics", "build:chassis", "build:firmware", "build:drive", "consistency"])
 	assert.equal(r.consistentAtMs, T0 + 190_000)
 	assert.equal(statusLine({ ripple: r }).headline, "“make it 2 cm narrower”: board, chassis and firmware agree")
 })
