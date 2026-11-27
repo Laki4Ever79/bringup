@@ -17,7 +17,8 @@ const cnc = () => {
 test("the scripted CNC's drivers: VS on the 24 V rail, one shared UART, addresses 0-3, each plug on its driver", () => {
 	const s = cnc()
 	const nets = generatedNets(s)
-	assert.deepEqual(nets.get("VMOT")!.filter((e) => /^U\d\.VS/.test(e)).sort(), ["U4.VS", "U4.VS2", "U5.VS", "U5.VS2", "U6.VS", "U6.VS2", "U7.VS", "U7.VS2"])
+	// After the e-stop switch (gap 7): the drivers on VMOT_SW, the brick's jack on VMOT before it.
+	assert.deepEqual(nets.get("VMOT_SW")!.filter((e) => /^U\d\.VS/.test(e)).sort(), ["U4.VS", "U4.VS2", "U5.VS", "U5.VS2", "U6.VS", "U6.VS2", "U7.VS", "U7.VS2"])
 	assert.ok(nets.get("VMOT")!.includes("J2.VIN"), "the brick's jack feeds it")
 	assert.deepEqual(nets.get("STEPPER_UART")!.sort(), ["U4.PDN_UART", "U5.PDN_UART", "U6.PDN_UART", "U7.PDN_UART"])
 	for (const [motor, driver, plug] of [["X", "U4", "JX1"], ["Y1", "U5", "JX2"], ["Y2", "U6", "JX3"], ["Z", "U7", "JX4"]])
@@ -94,7 +95,7 @@ test("the spindle switch (gap 6): PA8 PWM into a 5 V AHCT buffer, its gate resis
 	const nets = generatedNets(s)
 	// The buffer on the logic 5 V, enabled (OE low) until the e-stop takes OE (gap 7).
 	assert.ok(nets.get(BUCK_NET)!.includes("U8.VCC"), "U8 on the step-down's 5 V")
-	assert.ok(nets.get("GND")!.includes("U8.OE"))
+	assert.ok(nets.get("ESTOP_TRIP")!.includes("U8.OE"), "the e-stop disables it (gap 7)")
 	const sup = supportParts(s).filter((p) => /^U8 /.test(p.job))
 	const by = (re: RegExp) => sup.find((p) => re.test(p.job))!
 	// Gate: the resistor from Y to SPINDLE_GATE, the pull-down from SPINDLE_GATE to ground; the MOSFET's gate on it.
@@ -104,10 +105,10 @@ test("the spindle switch (gap 6): PA8 PWM into a 5 V AHCT buffer, its gate resis
 	assert.deepEqual(r.a, { ref: "U8", pin: "Y" })
 	assert.deepEqual(r.b, { net: "SPINDLE_GATE" })
 	// The drain, the spindle's minus lead and the flyback's anode on one node; the cathode on the motor rail.
-	assert.deepEqual(d.a, { net: "VMOT" })
+	assert.deepEqual(d.a, { net: "VMOT_SW" })
 	assert.deepEqual(d.b, { net: "SPINDLE_N" })
 	for (const e of ["Q1.D", "Q1.D_4", "J3.NEG"]) assert.ok(nets.get("SPINDLE_N")!.includes(e), e)
-	assert.ok(nets.get("VMOT")!.includes("J3.POS"), "the spindle's plus lead on the motor rail")
+	assert.ok(nets.get("VMOT_SW")!.includes("J3.POS"), "the spindle's plus lead on the motor rail")
 	for (const e of ["Q1.S", "Q1.S_3"]) assert.ok(nets.get("GND")!.includes(e), e)
 	// A typo'd @-net still reports (part-net-unknown): every @ net here has another end.
 	assert.deepEqual(checkConsistency(s, {}).filter((v) => v.kind === "part-net-unknown"), [])

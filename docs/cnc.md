@@ -146,3 +146,22 @@ Each failure on the way, with its general fix.
   carry the spindle's minus lead; hence a terminal of its own. Also found: compactOutline takes ~94 s on this ~70-part
   board (~260 layouts of ~0.36 s; 75 s of it without the reserved-spot check), and every consistency check calls it:
   a speed fix for large boards, logged for the space check's owner.
+- 27 Nov 2026, gap 7: the emergency stop and the limit switches. The rover's e-stop puts its A22E's NC contact in the
+  motors' supply; the CNC can't: the contact breaks 1.5 A of inductive load at 24 V DC, the brick feeds 6.67 A into four
+  steppers and a spindle. So the contact holds a P-FET's gate loop (AO4407A, C16072; role estop-switch): VMOT (the
+  brick, where the logic's step-down stays) to VMOT_SW (the drivers' VS and the spindle). Pressed, or its cable cut, the
+  loop opens and the gate goes to the source: off in hardware, the MCU still up to report it. The gate network is the
+  part's catalog support: a 1k/1.2k divider (10.4 mA at the brick's -5 %, over the contact's 10 mA minimum load; VGS
+  about -10.9 V, -11.5 V at +5 %), a 15 V Zener clamp (under the FET's 25 V), a 47k with a 100 nF gate-drain capacitor
+  for a soft start (about 0.74 A into the drivers' 440 µF over about 14 ms) and a 1N4148W around it for a fast turn-off
+  (about 1.0 ms, about 84 mJ, under the part's 101 mJ repetitive avalanche rating, for scale); all ESTIMATES from a
+  first-order gate model (src/cnc/estop.ts, checked on every revision). The same trip, divided to 3.1 V (ESTOP_TRIP),
+  disables every driver through an OR gate on their now shared ENN (SN74LVC1G32, C19829663; STEPPERS_EN from the MCU)
+  and the spindle's buffer (its OE), and the MCU reads it: outputs off even if the FET failed short. Each axis' limit
+  switch (NC to GND) on a side-entry JST XH plug with a 10k pull-up and 100 nF filter. Firmware requirement for gap 11
+  (lead-2): releasing the e-stop brings VMOT back but nothing resumes by itself: grblHAL stays in alarm until reset, the
+  spindle's gate stays off by its pull-down until the firmware enables it.
+  Found on the way: a pin the name rules join (VCC to 3.3 V, GND to ground) is no longer joined when the contract or a
+  chip's catalog entry wires it elsewhere: the spindle buffer's VCC sat on 5 V and, by its name, on 3.3 V, shorting them
+  (gap 6's design, caught by the gap 7 test); the plugs are their own catalog parts (the datasheet check refuses pins
+  renamed per design); header pads (pinrowN) are known to the reach check.

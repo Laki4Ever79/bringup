@@ -2,6 +2,7 @@ import type { ContractValues } from "../contract/types.ts"
 import type { MechCatalog, StepperPart } from "../mechanics/catalog.ts"
 import type { MechViolation } from "../mechanics/checks.ts"
 import { CNC_AXES, type CncAxis } from "./types.ts"
+import { estopChecks } from "./estop.ts"
 
 // The stepper driver's continuous RMS current per coil: the board's stepper-driver part's, from catalog/parts.json (the
 // TMC2209-LA: 1.4 A, its datasheet's design guideline), or that chip's when the board has none yet.
@@ -53,8 +54,11 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	// Each driver is driven: its STEP, DIR and EN (the TMC2209's ENN) on MCU GPIOs, partRef the driver. Before (26 Nov
 	// 2026, CNC mock run 6) four unwired TMC2209s on a board with no pins at all settled at 0 violations.
 	const pins = values.pins ?? []
+	// With the e-stop's enable gate (gap 7) every ENN is its output: the gate's B input takes the MCU's GPIO instead.
+	const gate = (values.parts ?? []).find((p) => p.role === "enable-gate")
+	if (gate && !pins.some((p) => p.partRef === gate.ref && p.partPin === "B")) out.push({ kind: "cnc-wiring", message: `the drivers' enable gate ${gate.ref} (${gate.mpn}) has no GPIO on B (the MCU's STEPPERS_EN): assign a free MCU GPIO with partRef ${gate.ref} and partPin B`, fields: ["pins"], affects: ["architect"] })
 	for (const d of (values.parts ?? []).filter((p) => p.role === "stepper-driver")) {
-		const need = [["STEP", "STEP"], ["DIR", "DIR"], ["EN", "ENN"]].filter(([, pin]) => d.pins.includes(pin) && !pins.some((p) => p.partRef === d.ref && p.partPin === pin))
+		const need = [["STEP", "STEP"], ["DIR", "DIR"], ...(gate ? [] : [["EN", "ENN"]])].filter(([, pin]) => d.pins.includes(pin) && !pins.some((p) => p.partRef === d.ref && p.partPin === pin))
 		if (need.length) out.push({ kind: "cnc-wiring", message: `the stepper driver ${d.ref} (${d.mpn}) has no GPIO on ${need.map(([, pin]) => pin).join(", ")}: assign each to a free MCU GPIO with partRef ${d.ref} and partPin ${need.map(([, pin]) => pin).join("/")} (signals named per axis, e.g. X_${need[0][0]})`, fields: ["pins"], affects: ["architect"] })
 	}
 	// The motors' supply: a rail at the brick's volts for the drivers' VS (the TMC2209's 5.5–29 V).
@@ -71,6 +75,8 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	if (fw > tw || fd > td) push("cnc-travel", `the frame takes ${fw} × ${fd} mm of desk, more than the brief's ${tw} × ${td} mm`, true)
 	if (m.spindle.watts > t.spindleW) push("cnc-supply", `the spindle is ${m.spindle.watts} W, over the brief's ${t.spindleW} W`, true)
 	if (!cat) return out
+	// The emergency stop's power switch and its gate loop (gap 7, src/cnc/estop.ts).
+	out.push(...estopChecks(values, cat))
 
 	// The catalog's parts.
 	const mech = cat.mech

@@ -142,12 +142,13 @@ function catalogPart(mpn: string, ref: string, nets?: Record<string, string>): P
 }
 // One stepper driver per motor (X, Y ×2, Z): the catalog's TMC2209-LA.
 const cncDriver = (ref: string) => catalogPart("TMC2209-LA", ref)
-// The motors in the drivers' order (src/cnc/board.ts cncMotors) and each one's MCU pins (UFQFPN48 names): STEP, DIR, ENN.
-const CNC_MOTORS: { label: string; driver: string; plug: string; step: string; dir: string; en: string }[] = [
-	{ label: "X", driver: "U4", plug: "JX1", step: "PA0", dir: "PA1", en: "PA2" },
-	{ label: "Y1", driver: "U5", plug: "JX2", step: "PA3", dir: "PA4", en: "PA5" },
-	{ label: "Y2", driver: "U6", plug: "JX3", step: "PA6", dir: "PA7", en: "PB0" },
-	{ label: "Z", driver: "U7", plug: "JX4", step: "PB1", dir: "PB10", en: "PB12" },
+// The motors in the drivers' order (src/cnc/board.ts cncMotors) and each one's MCU pins (UFQFPN48 names): STEP and DIR
+// (their ENN is one shared line from the e-stop's OR gate, gap 7).
+const CNC_MOTORS: { label: string; driver: string; plug: string; step: string; dir: string }[] = [
+	{ label: "X", driver: "U4", plug: "JX1", step: "PA0", dir: "PA1" },
+	{ label: "Y1", driver: "U5", plug: "JX2", step: "PA3", dir: "PA4" },
+	{ label: "Y2", driver: "U6", plug: "JX3", step: "PA6", dir: "PA7" },
+	{ label: "Z", driver: "U7", plug: "JX4", step: "PB1", dir: "PB10" },
 ]
 const f411 = (name: string) => {
 	const i = pinIndex(profileById("stm32f411ceu6"), name)
@@ -178,8 +179,14 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		...CNC_MOTORS.flatMap((m) => [
 			{ signal: `${m.label}_STEP`, gpio: f411(m.step), partRef: m.driver, partPin: "STEP" },
 			{ signal: `${m.label}_DIR`, gpio: f411(m.dir), partRef: m.driver, partPin: "DIR" },
-			{ signal: `${m.label}_EN`, gpio: f411(m.en), partRef: m.driver, partPin: "ENN" },
 		]),
+		// One enable for every driver (gap 7): the MCU's STEPPERS_EN on the OR gate's B, the e-stop's ESTOP_TRIP on its A;
+		// the MCU reads ESTOP_TRIP too (grblHAL's E-stop alarm), and each axis' limit switch.
+		{ signal: "STEPPERS_EN", gpio: f411("PA2"), partRef: "U9", partPin: "B" },
+		{ signal: "ESTOP_TRIP", gpio: f411("PB12"), partRef: "U9", partPin: "A" },
+		{ signal: "LIMIT_X", gpio: f411("PB13"), partRef: "JL1", partPin: "SIG" },
+		{ signal: "LIMIT_Y", gpio: f411("PB14"), partRef: "JL2", partPin: "SIG" },
+		{ signal: "LIMIT_Z", gpio: f411("PB15"), partRef: "JL3", partPin: "SIG" },
 		{ signal: "STEPPER_UART", gpio: f411("PA9"), partRef: "U4", partPin: "PDN_UART" },
 		{ signal: "STATUS_LED", gpio: f411("PC13"), partRef: "D1", partPin: "A" },
 		// The spindle's speed: TIM1_CH1 PWM on PA8, into the 5 V gate driver (gap 6).
@@ -199,7 +206,15 @@ export const CNC_DESIGN: typeof LOGGER_DESIGN = {
 		// low-side MOSFET between the spindle's minus lead and ground, and the spindle's screw terminal on the motor rail.
 		catalogPart("SN74AHCT1G125DBVR", "U8"),
 		catalogPart("AO4468", "Q1", { S: "GND", S_2: "GND", S_3: "GND", G: "@SPINDLE_GATE", D: "@SPINDLE_N", D_2: "@SPINDLE_N", D_3: "@SPINDLE_N", D_4: "@SPINDLE_N" }),
-		catalogPart("KF128R-5.08-2P", "J3", { POS: "VMOT", NEG: "@SPINDLE_N" }),
+		catalogPart("KF128R-5.08-2P", "J3", { POS: "@VMOT_SW", NEG: "@SPINDLE_N" }),
+		// The emergency stop (gap 7): its power switch (VMOT to VMOT_SW, gate held on through the e-stop's NC loop), the OR
+		// gate that disables every driver on a stop, the e-stop's plug, and a limit switch's plug per axis.
+		catalogPart("AO4407A", "Q2"),
+		catalogPart("SN74LVC1G32DBVR", "U9"),
+		catalogPart("B2B-XH-A-R(LF)(SN)", "JE1", { LOOP: "@ESTOP_LOOP" }),
+		catalogPart("S2B-XH-A(LF)(SN)", "JL1"),
+		catalogPart("S2B-XH-A(LF)(SN)", "JL2"),
+		catalogPart("S2B-XH-A(LF)(SN)", "JL3"),
 	],
 }
 const isCnc = () => !!state().contract.get("cncTargets") || CNC_BRIEF.test(state().contract.get("requirements")?.summary ?? "")

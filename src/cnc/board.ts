@@ -36,9 +36,24 @@ export function motorSupplyRail(s: ContractSnapshot): string | null {
 // motor rail (the brick's net). Null when the board has no motor rail yet.
 export function spindleDriverCtx(s: ContractSnapshot, part: Part, logic5V: string): ChipCtx | null {
 	if (part.role !== "spindle-driver") return null
-	const motor = motorSupplyRail(s) ?? (s.values.parts ?? []).find((p) => p.mpn === "DC-091-A250")?.nets?.VIN
-	return motor ? { in: logic5V, oe: "GND", motor: `@${motor}` } : null
+	const motor = switchedRail(s) ?? motorSupplyRail(s) ?? (s.values.parts ?? []).find((p) => p.mpn === "DC-091-A250")?.nets?.VIN
+	// With the e-stop switch, the stop also disables the buffer (OE high: Y off, the gate's pull-down holds the spindle off).
+	return motor ? { in: logic5V, oe: hasEstopSwitch(s) ? "@ESTOP_TRIP" : "GND", motor: `@${motor}` } : null
 }
+
+// The CNC's emergency stop (gap 7): a high-side P-FET (role estop-switch) between the brick's motor rail and VMOT_SW, its
+// gate held on only through the e-stop's NC loop. The drivers and the spindle are fed from VMOT_SW; the logic's step-down
+// stays on the unswitched rail.
+export const VMOT_SW_NET = "VMOT_SW"
+export const hasEstopSwitch = (s: ContractSnapshot) => (s.values.parts ?? []).some((p) => p.role === "estop-switch")
+export const switchedRail = (s: ContractSnapshot) => (hasEstopSwitch(s) && motorSupplyRail(s) ? VMOT_SW_NET : null)
+export function estopSwitchCtx(s: ContractSnapshot, part: Part): ChipCtx | null {
+	if (part.role !== "estop-switch") return null
+	const vm = motorSupplyRail(s)
+	return vm ? { in: vm, out: VMOT_SW_NET } : null
+}
+// The enable gate (OR) and a limit switch's plug: their nets are fixed in their catalog entries; they only need a context.
+export const fixedCtx = (role: string) => (_s: ContractSnapshot, part: Part): ChipCtx | null => (part.role === role ? {} : null)
 
 export function stepperDriverCtx(s: ContractSnapshot, part: Part): ChipCtx | null {
 	if (part.role !== "stepper-driver") return null
@@ -47,7 +62,9 @@ export function stepperDriverCtx(s: ContractSnapshot, part: Part): ChipCtx | nul
 	const vm = motorSupplyRail(s)
 	if (!motor || !vm || motor.addr < 0) return null
 	const bit = (b: number) => (motor.addr & b ? "rail:3V3" : "GND")
-	return { in: vm, ms1: bit(1), ms2: bit(2), oa1: `@${motor.label}_A1`, oa2: `@${motor.label}_A2`, ob1: `@${motor.label}_B1`, ob2: `@${motor.label}_B2`, currentA: motor.currentA }
+	// With the e-stop's enable gate, every driver's ENN is its output (STEPPERS_ENN); without it the MCU's pins drive ENN.
+	const enn = (s.values.parts ?? []).some((p) => p.role === "enable-gate") ? { enn: "@STEPPERS_ENN" } : {}
+	return { in: switchedRail(s) ?? vm, ...enn, ms1: bit(1), ms2: bit(2), oa1: `@${motor.label}_A1`, oa2: `@${motor.label}_A2`, ob1: `@${motor.label}_B1`, ob2: `@${motor.label}_B2`, currentA: motor.currentA }
 }
 
 // Sense resistors the board may take (1206, 1 %, 0.25 W; LCSC pages read 26 Nov 2026). C2941110 is 15 mΩ, not 150.

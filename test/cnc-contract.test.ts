@@ -92,7 +92,9 @@ test("cnc checks: targets with no machine wake the mechanics agent; a board shor
 	// Drivers on the board but driven by nothing (CNC mock run 6 settled like this): their STEP/DIR/ENN and a 24 V rail.
 	const { CNC_DESIGN } = await import("../src/inference/scripts.ts")
 	const unwired = cncChecks({ cncTargets: CNC_TARGETS, cnc: CNC, parts: CNC_DESIGN.parts, pins: [], rails: CNC_DESIGN.rails.filter((r) => r.name === "3V3") })
-	assert.equal(unwired.filter((v) => /has no GPIO on STEP, DIR, ENN/.test(v.message)).length, 4)
+	// Their ENN is the e-stop's enable gate's output (gap 7): each driver needs STEP and DIR, the gate its B.
+	assert.equal(unwired.filter((v) => /has no GPIO on STEP, DIR:/.test(v.message)).length, 4)
+	assert.equal(unwired.filter((v) => /enable gate U9 .* has no GPIO on B/.test(v.message)).length, 1)
 	assert.ok(unwired.some((v) => /no 24 V rail for the stepper drivers' motor supply/.test(v.message)))
 	assert.ok(unwired.every((v) => v.kind === "cnc-wiring"))
 	// The scripted board as it is now wires them all: no cnc-wiring finding.

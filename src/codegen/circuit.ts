@@ -10,7 +10,7 @@ import type { Connector, ContractSnapshot, Part } from "../contract/types.ts"
 import { chipCrystal, chipPadLabels, chipPinLabels, chipPowerPins, chipSupport, type ChipCrystal } from "../mcu/board.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { loadProfiles, profileForPart, type McuProfile } from "../mcu/profile.ts"
-import { stepperDriverCtx, spindleDriverCtx } from "../cnc/board.ts"
+import { stepperDriverCtx, spindleDriverCtx, estopSwitchCtx, fixedCtx, motorSupplyRail, VMOT_SW_NET, hasEstopSwitch } from "../cnc/board.ts"
 
 interface CatalogEntry {
 	ref?: string
@@ -390,6 +390,10 @@ registerChipContext((s, part) => (part.role === "buck" && powerTree(s)?.buck?.re
 registerChipContext(stepperDriverCtx)
 // A CNC's spindle gate driver: VCC on the logic 5 V (the power tree's step-down), OE on GND until the e-stop cuts it.
 registerChipContext((s, part) => spindleDriverCtx(s, part, BUCK_NET))
+// A CNC's emergency-stop switch, its enable gate and its limit switches' plugs (gap 7).
+registerChipContext(estopSwitchCtx)
+registerChipContext(fixedCtx("enable-gate"))
+registerChipContext(fixedCtx("limit-switch"))
 // An arm's servo rail chip: fed by the brick's input, making its rail at the arm's rail voltage.
 registerChipContext((s, part) => {
 	const rail = (armRails(s) ?? []).find((r) => r.supplyRef === part.ref)
@@ -985,6 +989,14 @@ export function quadRingMm(footprint: string): number | undefined {
 // Without it the AP63205's BST capacitor had no pad to sit beside: placed last, 14.56 mm away, past its 5 mm bound, and
 // unreachableCaps couldn't see it (the arm board, 26 Nov 2026).
 const SOT23_PADS: Record<string, { x: number; ys: number[] }> = { sot23_6: { x: 1.3, ys: [0.95, 0, -0.95, -0.95, 0, 0.95] }, sot23_5: { x: 1.137, ys: [0.95, 0, -0.95, -0.95, 0.95] } }
+// A single-row header's pad centre (tscircuit's pinrowN[_pP], measured 27 Nov 2026: pads along x at the pitch, centred,
+// 2.54 mm by default): a CNC limit plug's filter capacitor on its SIG pin needed it to be checked (gap 7).
+export function pinrowPinOffset(footprint: string, pin: number): { x: number; y: number } | null {
+	const m = /^pinrow(\d+)(?:_p([\d.]+)(?:mm)?)?(?:_|$)/.exec(footprint)
+	if (!m || pin < 1 || pin > Number(m[1])) return null
+	const n = Number(m[1]), p = Number(m[2] ?? 2.54)
+	return { x: +((pin - 1 - (n - 1) / 2) * p).toFixed(3), y: 0 }
+}
 export function sotPinOffset(footprint: string, pin: number): { x: number; y: number } | null {
 	const f = SOT23_PADS[footprint]
 	if (!f || pin < 1 || pin > f.ys.length) return null
@@ -1004,7 +1016,7 @@ function ownPadOffset(footprint: string, pin: number): { x: number; y: number } 
 	return null
 }
 function padOffset(footprint: string, pad: number, rotation: number, known = true): { x: number; y: number } | null {
-	const at = icPinOffset(footprint, pad) ?? (known ? ownPadOffset(footprint, pad) ?? sotPinOffset(footprint, pad) : null) ?? quadPinOffset(footprint, pad, quadRingMm(footprint)) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
+	const at = icPinOffset(footprint, pad) ?? (known ? ownPadOffset(footprint, pad) ?? sotPinOffset(footprint, pad) ?? pinrowPinOffset(footprint, pad) : null) ?? quadPinOffset(footprint, pad, quadRingMm(footprint)) ?? (footprint === SY8368_FOOTPRINT ? sy8368PadCentre(pad) : null)
 	if (!at) return null
 	const t = (rotation * Math.PI) / 180
 	return { x: +(at.x * Math.cos(t) - at.y * Math.sin(t)).toFixed(3), y: +(at.x * Math.sin(t) + at.y * Math.cos(t)).toFixed(3) }
@@ -2217,6 +2229,9 @@ export function supplyWidths(s: ContractSnapshot): Map<string, number> {
 	}
 	// The motors' supply after the emergency stop carries the cell's current, as VBAT does.
 	if (estopPlug(s.values.parts ?? []) && out.has("VBAT")) out.set(MOTOR_VM_NET, out.get("VBAT")!)
+	// A CNC's switched motor rail after its e-stop switch carries the motor rail's current (gap 7).
+	const vm = hasEstopSwitch(s) ? motorSupplyRail(s) : null
+	if (vm && out.has(vm)) out.set(VMOT_SW_NET, out.get(vm)!)
 	return out
 }
 // A net too wide for a track (MAX_TRACK_MM) becomes a copper pour: the one rail on top, ground on the bottom. A board
@@ -2450,9 +2465,18 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 	// A pin listed once per net: a part's own nets (Part.nets, the arm's rail chips and jack, 25 Nov 2026) and the wiring
 	// below may both name it.
 	// A pin the contract puts on a net other than ground: by its part's nets, or as a signal's part pin.
-	const wiredElsewhere = (p: Part, pin: string) => {
+	// A chip's catalog entry wires its pins too (chipInstances' joins: the spindle buffer's VCC on the 5 V): a name rule
+	// must not add a second net (CNC gap 7: U8.VCC on V5 and, by its name, on 3V3, shorting the two).
+	const chipWired = new Map<string, string>()
+	try {
+		for (const c of chipInstances(s)) for (const j of c.joins) chipWired.set(`${j.ref}.${j.pin}`, j.net)
+	} catch {
+		// a contract the chip contexts can't read yet: the name rules alone
+	}
+	const wiredElsewhere = (p: Part, pin: string, net = "GND") => {
 		const own = p.nets?.[pin]
-		return (own !== undefined && own !== "GND") || pins.some((x) => x.partRef === p.ref && x.partPin === pin)
+		const chip = chipWired.get(`${p.ref}.${pin}`)
+		return (own !== undefined && own !== net) || (chip !== undefined && chip !== net) || pins.some((x) => x.partRef === p.ref && x.partPin === pin)
 	}
 	const join = (net: string, ref: string, pin: string) => {
 		const list = nets.get(net)!
@@ -2468,7 +2492,7 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			// generator's deliberate grounds (a PWM driver's OE, an IMU's address strap) still meet net-short.
 			if (GROUND_PINS.has(pin) && !wiredElsewhere(p, pin)) join("GND", p.ref, pin)
 			// A link connector's VCC carries power only when its link says so (below): two boards' regulators never meet.
-			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && p.role !== "connector" && SUPPLY_PINS.has(pin)) join(supply, p.ref, pin)
+			if (hasSupply && p.role !== "ldo" && p.role !== "charger" && p.role !== "connector" && SUPPLY_PINS.has(pin) && !wiredElsewhere(p, pin, supply)) join(supply, p.ref, pin)
 		}
 	}
 	// Pins the contract names a rail for (Part.nets): a numbered header's 5 V and ground pins, a power input's VIN. A rail
