@@ -52,6 +52,7 @@ test("WRITEBACK_FILES names exactly the files the hub appends", () => {
 		constant("src/runner/steer.ts", "STEER_COMMANDS_FILE"),
 		constant("src/runner/drift.ts", "DRIFT_ACTIONS_FILE"),
 		constant("src/system/run.ts", "SYSTEM_REQUESTS"),
+		constant("src/bench/bench-commands.ts", "BENCH_COMMANDS_FILE"),
 	]
 	assert.deepEqual([...WRITEBACK_FILES].sort(), appended.sort())
 })

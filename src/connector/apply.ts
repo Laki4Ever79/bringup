@@ -7,6 +7,7 @@ import { appendFileSync } from "node:fs"
 import { join } from "node:path"
 import { appendRequest, type ChangeRequest } from "../runner/requests.ts"
 import { WRITEBACK_FILES, type Command } from "./protocol.ts"
+import { benchCommand } from "../bench/bench-commands.ts"
 
 // Every command is checked before any is written: one bad command in a batch writes nothing (a file outside
 // WRITEBACK_FILES, a line that isn't one JSON object, a change request without text).
@@ -21,6 +22,11 @@ function check(c: Command): Record<string, unknown> {
 	}
 	if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error(`Studio command ${c.id}: its line is not one JSON object`)
 	if (c.file === "requests.jsonl" && typeof (v as { text?: unknown }).text !== "string") throw new Error(`Studio command ${c.id}: a change request needs its text`)
+	// A command for the robot: only one its firmware takes reaches the file bench-stream writes from (bench-commands.ts).
+	if (c.file === "bench-commands.jsonl") {
+		const b = benchCommand((v as { cmd?: unknown }).cmd)
+		if ("error" in b) throw new Error(`Studio command ${c.id}: ${b.error}`)
+	}
 	return v as Record<string, unknown>
 }
 

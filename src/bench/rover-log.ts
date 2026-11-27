@@ -13,13 +13,18 @@ export interface RoverLog {
 	odo: { ms: number; x: number; y: number; th: number; line: number }[]
 	// "HOLD <ms> <mm>": the distance it reads while holding still (no host driving it).
 	hold: { ms: number; distMm: number; line: number }[]
+	// The turn calibration (C): "CAL start <ms> <quarters>", "CAL turned ccw <ms> <rad>", "CAL turned cw <ms> <rad> scale
+	// <s>", "CAL coast <ms> <mm>": what the robot counted, by its own wheels.
+	cals: { kind: "start" | "ccw" | "cw" | "coast"; ms: number; value: number; scale?: number; line: number }[]
+	// Commands sent to it during a bench session ("> G 500 300" in the session's text, serial-stream.ts sessionText).
+	sent: { cmd: string; line: number }[]
 	gotos: { x: number; y: number; tx: number; ty: number; line: number; text: string }[]
 	panics: { line: number; text: string }[]
 	lines: number
 }
 
 export function parseRoverLog(text: string): RoverLog {
-	const out: RoverLog = { boots: [], ready: [], r: [], odo: [], hold: [], gotos: [], panics: [], lines: 0 }
+	const out: RoverLog = { boots: [], ready: [], r: [], odo: [], hold: [], cals: [], sent: [], gotos: [], panics: [], lines: 0 }
 	const ls = text.split(/\r?\n/)
 	out.lines = ls.length
 	ls.forEach((raw, i) => {
@@ -32,6 +37,10 @@ export function parseRoverLog(text: string): RoverLog {
 			out.r.push({ ms: +m[1], distMm: +m[2], dutyL: +m[3], dutyR: +m[4], enc: m[5] !== undefined ? [+m[5], +m[6]] : null, headingMrad: m[7] !== undefined ? +m[7] : null, line: n })
 		else if ((m = /^ODO (\d+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$/.exec(l))) out.odo.push({ ms: +m[1], x: +m[2], y: +m[3], th: +m[4], line: n })
 		else if ((m = /^HOLD (\d+) (-?\d+)$/.exec(l))) out.hold.push({ ms: +m[1], distMm: +m[2], line: n })
+		else if ((m = /^CAL start (\d+) (\d+)$/.exec(l))) out.cals.push({ kind: "start", ms: +m[1], value: +m[2], line: n })
+		else if ((m = /^CAL turned (ccw|cw) (\d+) (-?[\d.]+)(?: scale (-?[\d.]+))?$/.exec(l))) out.cals.push({ kind: m[1] as "ccw" | "cw", ms: +m[2], value: +m[3], ...(m[4] !== undefined ? { scale: +m[4] } : {}), line: n })
+		else if ((m = /^CAL coast (\d+) (-?[\d.]+)$/.exec(l))) out.cals.push({ kind: "coast", ms: +m[1], value: +m[2], line: n })
+		else if ((m = /^> (.+)$/.exec(l))) out.sent.push({ cmd: m[1], line: n })
 		else if ((m = /^GOTO done (-?[\d.]+) (-?[\d.]+) \(target (-?[\d.]+) (-?[\d.]+)\)$/.exec(l))) out.gotos.push({ x: +m[1], y: +m[2], tx: +m[3], ty: +m[4], line: n, text: l })
 		else if (/Guru Meditation Error|abort\(\) was called|Backtrace:/.test(l)) out.panics.push({ line: n, text: l })
 	})

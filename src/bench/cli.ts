@@ -1,4 +1,5 @@
-// `bringup bench-stream <run> <device> [--baud N]` and `bringup bench-log <run> <log>`: the bench companion's free
+// `bringup bench-stream <run> <device> [--baud N] [--offline]`, `bringup bench-send <run> <command>` and
+// `bringup bench-log <run> <log>`: the bench companion's free
 // commands (rover-log.ts, serial-stream.ts), shared by the repo's CLI (src/main.ts) and `npx bringup-mcp` (bin/).
 // bench-stream shows the robot's serial lines as they come and saves them in the design (bench/session-*.jsonl, which
 // Bringup Studio's live view reads); Ctrl-C ends the session and prints what it shows. bench-log reads a saved log the
@@ -17,12 +18,36 @@ export async function benchCli(argv: string[]): Promise<number> {
 		const { streamSerial, sessionText } = await import("./serial-stream.ts")
 		const { diagnoseRoverLog, findingsText, parseRoverLog } = await import("./rover-log.ts")
 		const { readFileSync } = await import("node:fs")
-		const s = streamSerial(device, dir, { baud: baudAt > 0 ? Number(argv[baudAt + 1]) : undefined, onLine: (l) => console.log(l) })
-		console.error(`bringup: streaming ${device} into ${s.file} (Ctrl-C to end)`)
+		const { basename, resolve } = await import("node:path")
+		// The session reaches Bringup Studio while it streams (the design's own run may have ended long ago), and the
+		// Real robot tab's test buttons come back down to the robot (bench-commands.jsonl). --offline: neither.
+		const offline = argv.includes("--offline")
+		const { studioConnector } = await import("../connector/client.ts")
+		const { readToken } = await import("../connector/login.ts")
+		const studio = studioConnector(resolve(dir), basename(resolve(dir)), { offline, token: readToken(), log: (m) => console.error(`bringup: ${m}`) })
+		const s = streamSerial(device, dir, { baud: baudAt > 0 ? Number(argv[baudAt + 1]) : undefined, onLine: (l) => console.log(l), commands: true, onSent: (c) => console.log(`> ${c}`) })
+		console.error(`bringup: streaming ${device} into ${s.file}${studio ? ", and to Bringup Studio" : ""} (Ctrl-C to end)`)
 		process.once("SIGINT", () => s.close())
 		await s.done.catch((e) => console.error(`bringup: ${e instanceof Error ? e.message : e}`))
-		console.log(`\n${s.lines()} lines saved.\n\n${findingsText(diagnoseRoverLog(parseRoverLog(existsSync(s.file) ? sessionText(readFileSync(s.file, "utf8")) : "")))}`)
+		await studio?.stop().catch(() => {})
+		console.log(`\n${s.lines()} lines saved${s.sent() ? `, ${s.sent()} command${s.sent() === 1 ? "" : "s"} sent` : ""}.\n\n${findingsText(diagnoseRoverLog(parseRoverLog(existsSync(s.file) ? sessionText(readFileSync(s.file, "utf8")) : "")))}`)
 		return 0
+	}
+	// `bringup bench-send <run> "G 500 300"`: one command for the robot a bench-stream of that run is talking to.
+	if (argv[0] === "bench-send") {
+		const [dir, cmd] = [argv[1], argv.slice(2).join(" ")]
+		if (!dir || !existsSync(dir) || !cmd) {
+			console.error('bringup: usage: bench-send <run folder> "G <x mm> <y mm>" | "C [quarters]" | "H <left> <right>"')
+			return 1
+		}
+		const { appendBenchCommand } = await import("./bench-commands.ts")
+		try {
+			console.log(`queued: ${appendBenchCommand(dir, cmd).cmd}`)
+			return 0
+		} catch (e) {
+			console.error(`bringup: ${e instanceof Error ? e.message : e}`)
+			return 1
+		}
 	}
 	if (argv[0] === "bench-log") {
 		const [dir, logFile] = [argv[1], argv[2]]

@@ -43,7 +43,8 @@ export function syncable(path: string, size: number): boolean {
 
 // The files the hub appends to a run (src/runner/requests.ts, decisions.ts, steer.ts, drift.ts; src/system/run.ts):
 // the only ones Studio's commands may write.
-export const WRITEBACK_FILES = ["requests.jsonl", "decisions.jsonl", "steer.jsonl", "drift-actions.jsonl", "system-requests.jsonl"] as const
+// bench-commands.jsonl: the Real robot tab's test buttons (src/bench/bench-commands.ts), written to the robot by bench-stream.
+export const WRITEBACK_FILES = ["requests.jsonl", "decisions.jsonl", "steer.jsonl", "drift-actions.jsonl", "system-requests.jsonl", "bench-commands.jsonl"] as const
 export type WritebackFile = (typeof WRITEBACK_FILES)[number]
 
 // One line Studio wants appended to one of those files; id is the server's, unique per run, so a command applied twice

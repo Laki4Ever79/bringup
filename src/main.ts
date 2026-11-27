@@ -134,7 +134,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	// it shows and the same revision's simulated drive beside it (src/bench/rover-log.ts). Free; no model, no hardware.
 	// `bringup bench-stream <run> <device> [--baud N]`: the robot's serial lines, shown as they come and saved in the
 	// design (bench/session-*.jsonl, which Studio mirrors); Ctrl-C ends the session and prints what it shows.
-	if (argv[0] === "bench-stream" || argv[0] === "bench-log") return (await import("./bench/cli.ts")).benchCli(argv)
+	if (argv[0] === "bench-stream" || argv[0] === "bench-send" || argv[0] === "bench-log") return (await import("./bench/cli.ts")).benchCli(argv)
 	if (argv[0] === "status") {
 		const dir = argv[1]
 		if (!dir || !existsSync(dir)) {

@@ -14,7 +14,7 @@ if (process.argv[2] === "setup") {
 	// Connect this machine to Bringup Studio (docs/studio.md): every run, the MCP's included, then streams there.
 	const { connectorCli } = await import("../src/connector/cli.ts")
 	process.exit(await connectorCli(process.argv.slice(2)))
-} else if (process.argv[2] === "bench-stream" || process.argv[2] === "bench-log") {
+} else if (process.argv[2] === "bench-stream" || process.argv[2] === "bench-send" || process.argv[2] === "bench-log") {
 	const { benchCli } = await import("../src/bench/cli.ts")
 	process.exit(await benchCli(process.argv.slice(2)))
 } else await import("../src/mcp/cli.ts")
