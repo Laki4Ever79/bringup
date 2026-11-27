@@ -8,6 +8,7 @@
 // so a restart never applies one twice.
 //
 // Public, in the engine: never imports src/dashboard or cloud/. Never logs the token.
+import { STUDIO } from "../brand/names.js"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join, relative, sep } from "node:path"
 import { applyCommands } from "./apply.ts"
@@ -85,7 +86,7 @@ export function startConnector(runDir: string, runId: string, opts: ConnectorOpt
 	let warned = false
 	const unreachable = (what: string, e: unknown) => {
 		// Once per outage, and never the token: only the URL and the error's message.
-		if (!warned) log(`Bringup Studio unreachable (${what}: ${e instanceof Error ? e.message : String(e)}); the run goes on, retrying`)
+		if (!warned) log(`${STUDIO} unreachable (${what}: ${e instanceof Error ? e.message : String(e)}); the run goes on, retrying`)
 		warned = true
 	}
 	const backoff = (n: number) => Math.min(MAX_BACKOFF_MS, interval * 2 ** Math.min(n, 10))

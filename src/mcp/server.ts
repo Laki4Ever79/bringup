@@ -705,7 +705,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 					board3d && { label: "the board", path: board3d.path },
 					finished && { label: steps.length ? "assembled" : showExploded ? "in its case" : "the design", path: finished.path },
 					// The motion's panel says its verdict too: the one picture tells whether the simulation passed.
-					drivePngs[0] && { label: /cnc-/.test(drivePngs[0].path) ? `the toolpath grblHAL ran: ${cncVerdict?.result ?? "?"}` : /arm-/.test(drivePngs[0].path) ? `pick-and-place (simulated): ${armVerdict?.result ?? "?"}` : `its drive (simulated): ${driveVerdict?.result ?? "?"}`, path: drivePngs[0].path },
+					drivePngs[0] && { label: /cnc-/.test(drivePngs[0].path) ? `the toolpath grblHAL ran: ${cncVerdict?.result ?? "not run"}` : /arm-/.test(drivePngs[0].path) ? `pick-and-place (simulated): ${armVerdict?.result ?? "not run"}` : `its drive (simulated): ${driveVerdict?.result ?? "not run"}`, path: drivePngs[0].path },
 				].filter((x): x is { label: string; path: string } => Boolean(x))
 				if (!env.python) notes.push("no overview: it is drawn with the case tools (`npx bringup-mcp setup case`, after your user says yes)")
 				else {

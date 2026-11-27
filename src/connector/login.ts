@@ -3,6 +3,7 @@
 // the token it gets in ~/.bringup/studio.json (mode 0600). The token is never printed or logged.
 //
 // Public, in the engine: never imports src/dashboard or cloud/.
+import { STUDIO } from "../brand/names.js"
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { spawn } from "node:child_process"
 import { homedir } from "node:os"
@@ -57,14 +58,14 @@ export async function login(url: string, open: (u: string) => void, opts: { fetc
 	const base = url.replace(/\/+$/, "")
 	const post = async (path: string, body: object) => {
 		const res = await f(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) }).catch((e: unknown) => {
-			throw new Error(`couldn't reach Bringup Studio at ${base} (${e instanceof Error ? e.message : String(e)}): check the address and your connection`)
+			throw new Error(`couldn't reach ${STUDIO} at ${base} (${e instanceof Error ? e.message : String(e)}): check the address and your connection`)
 		})
 		return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> }
 	}
 	const start = await post("/api/connector/pair", {})
-	if (start.status !== 200) throw new Error(`Bringup Studio at ${base} didn't start a pairing (HTTP ${start.status})`)
+	if (start.status !== 200) throw new Error(`${STUDIO} at ${base} didn't start a pairing (HTTP ${start.status})`)
 	const p = start.body as unknown as Pairing
-	say(`Open ${p.verifyUrl} and enter the code ${p.userCode} to connect this machine to Bringup Studio.`)
+	say(`Open ${p.verifyUrl} and enter the code ${p.userCode} to connect this machine to ${STUDIO}.`)
 	open(p.verifyUrl)
 	const deadline = Date.now() + (p.expiresInS ?? 600) * 1000
 	while (Date.now() < deadline) {
@@ -75,7 +76,7 @@ export async function login(url: string, open: (u: string) => void, opts: { fetc
 			return { account: String(r.body.account ?? "") }
 		}
 		if (r.status === 202 || r.body.pending) continue
-		throw new Error(`Bringup Studio refused the pairing: ${String(r.body.error ?? `HTTP ${r.status}`)}`)
+		throw new Error(`${STUDIO} refused the pairing: ${String(r.body.error ?? `HTTP ${r.status}`)}`)
 	}
 	throw new Error("the pairing code expired before it was approved: run `bringup login` again")
 }

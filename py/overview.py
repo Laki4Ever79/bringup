@@ -27,6 +27,20 @@ def font(px):
     return ImageFont.load_default()
 
 
+def trim_letterbox(pic):
+    """A render on a dark letterbox (KiCad's board.png: the board on black): cropped to what isn't the corners' dark
+    colour, with a small margin, so it sits on the panel's light background like the other pictures."""
+    corners = [pic.getpixel(c) for c in ((0, 0), (pic.width - 1, 0), (0, pic.height - 1), (pic.width - 1, pic.height - 1))]
+    if not all(sum(c) < 60 for c in corners):
+        return pic
+    mask = pic.convert("L").point(lambda v: 255 if v > 24 else 0)
+    box = mask.getbbox()
+    if not box:
+        return pic
+    m = 0  # flush: a margin brought the black back as a frame
+    return pic.crop((max(0, box[0] - m), max(0, box[1] - m), min(pic.width, box[2] + m), min(pic.height, box[3] + m)))
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__, file=sys.stderr)
@@ -49,7 +63,7 @@ def main():
     for i, (label, path) in enumerate(panels):
         x0 = GAP + i * (PANEL[0] + GAP)
         d.rectangle([x0, GAP, x0 + PANEL[0], GAP + PANEL[1] + LABEL_H], fill=CARD, outline=RULE, width=2)
-        pic = Image.open(path).convert("RGB")
+        pic = trim_letterbox(Image.open(path).convert("RGB"))
         pic.thumbnail((PANEL[0] - 16, PANEL[1] - 16), Image.LANCZOS)
         img.paste(pic, (x0 + (PANEL[0] - pic.width) // 2, GAP + (PANEL[1] - pic.height) // 2))
         d.line([x0, GAP + PANEL[1], x0 + PANEL[0], GAP + PANEL[1]], fill=RULE, width=2)
