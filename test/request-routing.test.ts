@@ -74,5 +74,5 @@ test("a build failed for a missing tool wakes no agent; a design failure still d
 	await new Promise((r) => setTimeout(r, 500))
 	assert.deepEqual(fromParts().map((e) => e.type), [], "a missing tool woke the parts agent")
 	getOutbox().emit(makeEvent("artifact.failed", parts, { kind: "board", revision: 4, error: "unknown footprint soic9 on U3" }), parts)
-	await waitFor(() => fromParts().length > 0, 3000)
+	await waitFor(() => fromParts().length > 0)
 })

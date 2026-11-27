@@ -93,7 +93,7 @@ test("without live lookups the BOM makes no requests and says stock was not look
 	const calls: string[] = []
 	const t = setup(fakeFetch({ C2838502: { stock: 5, price: 1 } }, calls), false)
 	t.setParts()
-	await waitFor(() => existsSync(t.path), 3000)
+	await waitFor(() => existsSync(t.path))
 	const bom = t.read()
 	assert.deepEqual(calls, [])
 	assert.equal(bom.liveStock, false)

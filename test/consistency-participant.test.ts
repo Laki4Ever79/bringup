@@ -121,7 +121,7 @@ test("a quiet design missing a required field settles unsettled and names the fi
 	const t = setup({ requires: true })
 	const v = fixtureContract().values
 	for (const f of CORE_FIELDS) if (f !== "pins") t.write(f, v[f])
-	await waitFor(() => t.settled.length > 0, 2000)
+	await waitFor(() => t.settled.length > 0)
 	assert.deepEqual(t.settled, [{ settled: false, revision: 5 }])
 	assert.match(t.state.artifactFailures.board ?? "", /pins/)
 	assert.match(t.state.artifactFailures.firmware ?? "", /pins/)

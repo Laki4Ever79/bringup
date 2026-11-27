@@ -88,7 +88,7 @@ test("after the first settle every new firmware is flashed at once, without wait
 	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 100, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
 	const next = t.firmware()
 	t.send("artifact.ready", { kind: "firmware", revision: next })
-	await waitFor(() => t.of("bench.verdict").length === 2, 5000)
+	await waitFor(() => t.of("bench.verdict").length === 2)
 	assert.deepEqual(t.of("bench.flashed").map((f) => f.revision), [first, next])
 	assert.equal(t.of("bench.verdict")[1].revision, next)
 })
@@ -97,7 +97,7 @@ test("the measured average goes to the contract through change control, once, wh
 	const t = setup(new FakeBridge())
 	const rev = t.firmware()
 	t.send("design.settled", { revision: rev, settled: true })
-	await waitFor(() => t.of("change.resolved").length > 0, 5000)
+	await waitFor(() => t.of("change.resolved").length > 0)
 	const m = t.of("bench.measured")[0]
 	assert.equal(m.rail, "3V3")
 	assert.equal(m.cycles, 8)
@@ -128,7 +128,7 @@ test("the measured average goes to the contract through change control, once, wh
 test("a measurement within 10 % of the contract is reported but not proposed", async () => {
 	const t = setup(new FakeBridge({ duty: { floorMa: 6, awakeMa: 6 + 8250 / 180, awakeMs: 180, periodMs: 3000, cycles: 8 } }))
 	t.send("design.settled", { revision: t.firmware(), settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	const m = t.of("bench.measured")[0]
 	assert.ok(Math.abs(m.averageMa - 0.0375) / 0.0375 < 0.1, `averageMa ${m.averageMa}`)
 	assert.equal(t.of("change.proposed").length, 0)
@@ -138,7 +138,7 @@ test("a replay is badged replay and never proposes to the contract", async () =>
 	const t = setup(new FakeBridge({ source: "replay", recordedRev: 3 }))
 	const rev = t.firmware()
 	t.send("design.settled", { revision: rev, settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	assert.equal(t.of("bench.flashed")[0].simulated, true)
 	assert.equal(t.of("bench.measured")[0].source, "replay")
 	assert.equal(t.of("bench.verdict")[0].source, "replay")
@@ -151,7 +151,7 @@ test("a board that boots another revision fails the flash at the boot stage", as
 	const t = setup(new FakeBridge({ bootRev: 99 }))
 	const rev = t.firmware()
 	t.send("design.settled", { revision: rev, settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	const flashed = t.of("bench.flashed")[0]
 	assert.deepEqual([flashed.ok, flashed.stage], [false, "boot"])
 	assert.match(flashed.error!, /99/)
@@ -180,7 +180,7 @@ test("the bench refuses to flash a design whose pins collide with the bench's ow
 test("a bare S3 with no IMU fitted and no meter: imu is 'not fitted', neutral, and the verdict passes on boot and LED", async () => {
 	const t = setup(new FakeBridge({ imu: false, meter: false }))
 	t.send("design.settled", { revision: t.firmware(), settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	const v = t.of("bench.verdict")[0]
 	const checks = Object.fromEntries(v.checks.map((c) => [c.name, c]))
 	assert.deepEqual([checks.imu.pass, checks.imu.skipped], [true, true])
@@ -195,7 +195,7 @@ test("a bare S3 with no IMU fitted and no meter: imu is 'not fitted', neutral, a
 test("an IMU that answered and then stopped is a failure, not 'not fitted'", async () => {
 	const t = setup(new FakeBridge({ imu: "stops", meter: false }))
 	t.send("design.settled", { revision: t.firmware(), settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	const imu = t.of("bench.verdict")[0].checks.find((c) => c.name === "imu")!
 	assert.equal(imu.pass, false)
 	assert.equal(imu.skipped, undefined)
@@ -223,7 +223,7 @@ test("a board that panics or browns out after booting fails the boot check", asy
 	t.send("design.settled", { revision: rev, settled: true })
 	await waitFor(() => t.of("bench.flashed").length > 0)
 	fake.emit({ k: "boot", rev, reset: "brownout", mode: "live" })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	const boot = t.of("bench.verdict")[0].checks.find((c) => c.name === "boot")!
 	assert.equal(boot.pass, false)
 	assert.match(boot.detail, /brownout/)
@@ -233,7 +233,7 @@ test("without a battery capacity the measurement is reported but battery life is
 	const t = setup(new FakeBridge())
 	writeFileSync(path(t.state.outDir, "brief.md"), "A blinky with a button.\n")
 	t.send("design.settled", { revision: t.firmware(), settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	assert.equal(t.of("bench.measured")[0].days, null)
 	const v = t.of("bench.verdict")[0]
 	assert.equal(v.checks.some((c) => c.name === "battery"), false)
@@ -249,9 +249,9 @@ test("a newer firmware cuts the running measurement short and is flashed at once
 	const next = t.firmware()
 	const sent = Date.now()
 	t.send("artifact.ready", { kind: "firmware", revision: next })
-	await waitFor(() => t.of("bench.flashing").some((f) => f.revision === next), 2000)
+	await waitFor(() => t.of("bench.flashing").some((f) => f.revision === next))
 	assert.ok(Date.now() - sent < 1500, "flashed without waiting out the 5 s window")
-	await waitFor(() => t.of("bench.verdict").some((v) => v.revision === next), 8000)
+	await waitFor(() => t.of("bench.verdict").some((v) => v.revision === next))
 	const old = t.of("bench.verdict").find((v) => v.revision === first)
 	assert.ok(old, "the superseded firmware still gets its verdict on what was checked")
 	assert.equal(old!.checks.some((c) => c.name === "battery"), false)
@@ -267,7 +267,7 @@ test("without a CP2102: a telemetry error while the port re-enumerates and a rep
 	// The bridge reopens the S3's own USB port after the flash: one error line, then the firmware resends its boot line.
 	fake.emit({ k: "error", where: "telemetry", error: "port vanished: /dev/ttyACM0" })
 	fake.emit({ k: "boot", rev, reset: "usb", mode: "live" })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	assert.equal(t.of("bench.flashed").length, 1)
 	assert.equal(t.of("bench.verdict")[0].pass, true, JSON.stringify(t.of("bench.verdict")[0].checks))
 	assert.equal(t.of("bench.measured").length, 1, "measured from the meter samples alone, with no cycle lines")
@@ -287,7 +287,7 @@ test("when the flash needs the person, the bench says so as bench.instruction ev
 	const t = setup(new FakeBridge({ meter: false, instruct: { action: "boot-reset", text, done: true } }))
 	const rev = t.firmware()
 	t.send("design.settled", { revision: rev, settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	assert.deepEqual(t.of("bench.instruction"), [
 		{ revision: rev, action: "boot-reset", text, state: "waiting" },
 		{ revision: rev, action: "boot-reset", text, state: "done" },
@@ -298,7 +298,7 @@ test("when the flash needs the person, the bench says so as bench.instruction ev
 test("an instruction nobody answered is reported as timed out", async () => {
 	const t = setup(new FakeBridge({ meter: false, instruct: { action: "reset", text: "Tap RST", done: false } }))
 	t.send("design.settled", { revision: t.firmware(), settled: true })
-	await waitFor(() => t.of("bench.instruction").length === 2, 5000)
+	await waitFor(() => t.of("bench.instruction").length === 2)
 	assert.equal(t.of("bench.instruction")[1].state, "timeout")
 })
 
@@ -316,7 +316,7 @@ test("after a behavior change the bench measures the new tilted blink from the t
 	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
 	const rev = t.firmware()
 	t.send("design.settled", { revision: rev, settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	const blink = t.of("bench.blink")[0]
 	assert.equal(blink.revision, rev)
 	assert.ok(blink.tiltBlinkMs !== null && Math.abs(blink.tiltBlinkMs - 250) <= 50, `tiltBlinkMs ${blink.tiltBlinkMs}`)
@@ -336,7 +336,7 @@ test("a firmware that ignores the new behavior fails the blink check", async () 
 	const rev = t.firmware()
 	writeFileSync(path(t.state.outDir, "firmware", `rev-${rev}`, "include/behavior.h"), "#define BEHAVIOR_BLINK_MS 1000\n")
 	t.send("design.settled", { revision: rev, settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	const check = t.of("bench.verdict")[0].checks.find((c) => c.name === "blink")!
 	assert.equal(check.pass, false)
 	assert.match(check.detail, /contract 250 ms/)
@@ -347,7 +347,7 @@ test("on a real board nobody tilted, the bench asks the person to tilt it, then 
 	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
 	const rev = t.firmware()
 	t.send("design.settled", { revision: rev, settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 5000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	assert.deepEqual(t.of("bench.instruction").map((i) => [i.action, i.state]), [["tilt", "waiting"], ["tilt", "timeout"]])
 	assert.match(t.of("bench.instruction")[0].text, /Tilt the board more than 20°/)
 	const check = t.of("bench.verdict")[0].checks.find((c) => c.name === "blink")!
@@ -361,7 +361,7 @@ test("a missing plain blink period is not waited for: only a tilt is worth waiti
 	const t = setup(new FakeBridge({ meter: false }), { blinkWaitMs: 5000 })
 	const started = Date.now()
 	t.send("design.settled", { revision: t.firmware(), settled: true })
-	await waitFor(() => t.of("bench.verdict").length > 0, 2000)
+	await waitFor(() => t.of("bench.verdict").length > 0)
 	assert.ok(Date.now() - started < 1500, `verdict after ${Date.now() - started} ms`)
 	assert.equal(t.of("bench.verdict")[0].checks.find((c) => c.name === "blink")!.skipped, true)
 })
@@ -370,7 +370,7 @@ test("close() ends a tilt wait at once, and the bench emits nothing after it", a
 	const t = setup(new FakeBridge({ meter: false, live: { seconds: 6, tilt: () => 3 } }), { blinkWaitMs: 20_000 })
 	t.state.contract.propose({ field: "behavior", value: { blinkMs: 1000, tiltBlinkMs: 250, tiltDeg: 20 }, by: "firmware", baseVersion: 0 })
 	t.send("design.settled", { revision: t.firmware(), settled: true })
-	await waitFor(() => t.of("bench.instruction").length === 1, 2000)
+	await waitFor(() => t.of("bench.instruction").length === 1)
 	const b = bench!
 	bench = null
 	await b.close()

@@ -75,9 +75,9 @@ test("a run's contract and trace reach the fake server; a trace append is sent a
 	writeFileSync(join(dir, "trace.jsonl"), '{"type":"run.started"}\n')
 	const c = startConnector(dir, "run-1", { url, token: TOKEN, intervalMs: 50 })
 	try {
-		await waitFor(() => s.files.get("trace.jsonl")?.toString() === '{"type":"run.started"}\n', 5000)
+		await waitFor(() => s.files.get("trace.jsonl")?.toString() === '{"type":"run.started"}\n')
 		appendFileSync(join(dir, "trace.jsonl"), '{"type":"contract.changed"}\n')
-		await waitFor(() => (s.files.get("trace.jsonl")?.toString() ?? "").endsWith('{"type":"contract.changed"}\n'), 5000)
+		await waitFor(() => (s.files.get("trace.jsonl")?.toString() ?? "").endsWith('{"type":"contract.changed"}\n'))
 		assert.ok(s.changes.some((x) => x.path === "trace.jsonl" && x.kind === "append"))
 		assert.equal(s.files.get("contract.json")?.toString(), '{"revision":1}')
 		// A build folder never goes up.
@@ -85,7 +85,7 @@ test("a run's contract and trace reach the fake server; a trace append is sent a
 		mkdirSync(join(dir, "firmware", ".pio"), { recursive: true })
 		writeFileSync(join(dir, "firmware", ".pio", "x.o"), "obj")
 		writeFileSync(join(dir, "contract.json"), '{"revision":2}')
-		await waitFor(() => s.files.get("contract.json")?.toString() === '{"revision":2}', 5000)
+		await waitFor(() => s.files.get("contract.json")?.toString() === '{"revision":2}')
 		assert.ok(![...s.files.keys()].some((k) => k.includes(".pio")))
 	} finally {
 		await c.stop()
@@ -120,12 +120,12 @@ test("a command from the server lands in requests.jsonl, once, and survives a re
 	s.commands.push({ file: "requests.jsonl", line: JSON.stringify({ text: "make it 50 mm wide" }), id: "0001" })
 	let c = startConnector(dir, "run-1", { url, token: TOKEN, intervalMs: 50 })
 	try {
-		await waitFor(() => existsSync(join(dir, "requests.jsonl")), 5000)
+		await waitFor(() => existsSync(join(dir, "requests.jsonl")))
 		await c.stop()
 		// A connector started again on the same run: the applied ids are kept, nothing lands twice.
 		c = startConnector(dir, "run-1", { url, token: TOKEN, intervalMs: 50 })
 		s.commands.push({ file: "requests.jsonl", line: JSON.stringify({ text: "and 30 mm tall" }), id: "0002" })
-		await waitFor(() => readFileSync(join(dir, "requests.jsonl"), "utf8").includes("30 mm"), 5000)
+		await waitFor(() => readFileSync(join(dir, "requests.jsonl"), "utf8").includes("30 mm"))
 		const texts = readFileSync(join(dir, "requests.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).text)
 		assert.deepEqual(texts, ["make it 50 mm wide", "and 30 mm tall"])
 		// The connector's bookkeeping stays local.
@@ -145,7 +145,7 @@ test("the server down for 3 s: the run goes on, and the connector catches up aft
 	const logs: string[] = []
 	const c = startConnector(dir, "run-1", { url, token: TOKEN, intervalMs: 50, log: (m) => logs.push(m) })
 	try {
-		await waitFor(() => s.files.get("trace.jsonl")?.toString() === "a\n", 5000)
+		await waitFor(() => s.files.get("trace.jsonl")?.toString() === "a\n")
 		s.setDown(true)
 		// The run keeps writing while Studio is gone; nothing here throws or waits on the connector.
 		for (const l of ["b\n", "c\n", "d\n"]) {
@@ -177,7 +177,7 @@ test("no token: the run sends nothing (main.ts starts the connector only with a 
 		assert.equal(s.authBad, 0)
 		const on = studioConnector(dir, "run-1", { offline: false, token: { url, token: TOKEN, account: "a" }, intervalMs: 50 })
 		assert.ok(on)
-		await waitFor(() => s.files.has("contract.json"), 5000)
+		await waitFor(() => s.files.has("contract.json"))
 		await on.stop()
 	} finally {
 		await s.close()

@@ -82,11 +82,11 @@ test("--stay: a system-level request moves a board; every board gets the new bod
 	const spec = robot()
 	const run = runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, start: settlingBoards(timers), stay: { until } })
 	try {
-		await waitFor(() => readSystemTrace(out).some((l) => l.board === "system" && l.step === "settled"), 3000)
+		await waitFor(() => readSystemTrace(out).some((l) => l.board === "system" && l.step === "settled"))
 		const before = { main: requestsOf(join(out, "boards", "main")).length, front: requestsOf(join(out, "boards", "front")).length }
 		const moved = spec.assembly!.boards.map((b) => (b.name === "front" ? { ...b, xMm: b.xMm + 5 } : b))
 		appendFileSync(join(out, SYSTEM_REQUESTS), JSON.stringify({ at: new Date().toISOString(), text: "move front 5 mm forward", assembly: { boards: moved } }) + "\n")
-		await waitFor(() => readSystemTrace(out).filter((l) => l.board === "system" && l.step === "settled").length >= 2, 3000)
+		await waitFor(() => readSystemTrace(out).filter((l) => l.board === "system" && l.step === "settled").length >= 2)
 		for (const name of ["main", "front"] as const) {
 			const reqs = requestsOf(join(out, "boards", name))
 			assert.equal(reqs.length, before[name] + 1, name)
@@ -113,10 +113,10 @@ test("--stay: a board that settles again after its own edit makes the system che
 	const run = runSystem({ spec: robot(), outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, start: settlingBoards(timers), stay: { until } })
 	try {
 		const sysSettles = () => readSystemTrace(out).filter((l) => l.board === "system" && l.step === "settled").length
-		await waitFor(() => sysSettles() >= 1, 3000)
+		await waitFor(() => sysSettles() >= 1)
 		// The board page's change request goes to the board alone (as POST /api/runs/<board>/requests does).
 		appendFileSync(join(out, "boards", "front", "requests.jsonl"), JSON.stringify({ at: new Date().toISOString(), text: "turn U5 90°" }) + "\n")
-		await waitFor(() => sysSettles() >= 2, 3000)
+		await waitFor(() => sysSettles() >= 2)
 		assert.ok(readSystemTrace(out).some((l) => l.board === "system" && l.step === "request" && /front changed on its own page/.test(l.detail ?? "")))
 	} finally {
 		stop()
@@ -133,12 +133,12 @@ async function stayRequest(spec: SystemSpec, request: object, settleAgain = fals
 	const until = new Promise<void>((r) => (stop = r))
 	const run = runSystem({ spec, outDir: out, mock: true, pollMs: 10, timeoutMs: 3000, start: settlingBoards(timers), stay: { until } })
 	try {
-		await waitFor(() => readSystemTrace(out).some((l) => l.board === "system" && l.step === "settled"), 3000)
+		await waitFor(() => readSystemTrace(out).some((l) => l.board === "system" && l.step === "settled"))
 		const count = (n: string) => requestsOf(join(out, "boards", n)).length
 		const before = Object.fromEntries(spec.boards.map((b) => [b.name, count(b.name)]))
 		appendFileSync(join(out, SYSTEM_REQUESTS), JSON.stringify({ at: new Date().toISOString(), ...request }) + "\n")
-		if (settleAgain) await waitFor(() => readSystemTrace(out).filter((l) => l.board === "system" && l.step === "settled").length >= 2, 3000)
-		else await waitFor(() => readSystemTrace(out).some((l) => l.step === "request" && l.round >= 1 && (l.status === "started" || /no board/.test(l.detail ?? ""))), 3000)
+		if (settleAgain) await waitFor(() => readSystemTrace(out).filter((l) => l.board === "system" && l.step === "settled").length >= 2)
+		else await waitFor(() => readSystemTrace(out).some((l) => l.step === "request" && l.round >= 1 && (l.status === "started" || /no board/.test(l.detail ?? ""))))
 		await new Promise((r) => setTimeout(r, 200))
 		const gained = Object.fromEntries(spec.boards.map((b) => [b.name, count(b.name) - before[b.name]]))
 		return { out, gained, system: JSON.parse(readFileSync(join(out, "system.json"), "utf8")) as SystemSpec }

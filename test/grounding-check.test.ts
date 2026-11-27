@@ -67,7 +67,7 @@ test("an invented pin wakes the parts agent, which replaces the parts list", asy
 	assert.deepEqual(flagged.map((f) => [f.partRef, f.kind]), [["U2", "pin-not-on-part"]])
 	assert.match(flagged[0].detail, /SDA2/)
 	// The mock parts agent proposes the catalog parts again, and the grounding check clears the finding.
-	await waitFor(() => t.turns["mock-parts"] >= 1 && t.state.contract.version("parts") >= 2 && t.checks().at(-1)!.findings.length === 0, 5000)
+	await waitFor(() => t.turns["mock-parts"] >= 1 && t.state.contract.version("parts") >= 2 && t.checks().at(-1)!.findings.length === 0)
 	assert.deepEqual(t.state.groundingFindings, [])
 	assert.equal(t.turns["mock-architect"], 0, "a parts-list finding is not the architect's")
 })
@@ -76,7 +76,7 @@ test("a pin assignment to an invented pin wakes the architect, not the parts age
 	const t = setup()
 	t.change("parts", LOGGER_DESIGN.parts, "parts")
 	t.change("pins", LOGGER_DESIGN.pins.map((p) => (p.signal === "I2C_SDA" ? { ...p, partPin: "SDA2" } : p)), "architect")
-	await waitFor(() => t.turns["mock-architect"] >= 1, 5000)
+	await waitFor(() => t.turns["mock-architect"] >= 1)
 	assert.deepEqual(t.state.groundingFindings.map((f) => [f.partRef, f.kind]), [["U2", "pin-not-on-part"]])
 	assert.equal(t.turns["mock-parts"], 0)
 })

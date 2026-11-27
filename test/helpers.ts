@@ -54,10 +54,16 @@ export function recorder(): SemanticEvent[] {
 	return seen
 }
 
-export async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
+// Waits on the condition itself, polling, up to one generous ceiling (lead-2, 28 Nov 2026: fixed 2-8 s waits failed the
+// scripted agents' tests whenever a board build loaded the machine; adopt itself failed 2 of 8). A loaded machine makes a
+// test slower, never red. A test that wants longer still passes its own; a shorter one is raised to the ceiling.
+// BRINGUP_TEST_WAIT_MS overrides it.
+export const WAIT_CEILING_MS = Number(process.env.BRINGUP_TEST_WAIT_MS) || 60_000
+export async function waitFor(check: () => boolean, timeoutMs = WAIT_CEILING_MS): Promise<void> {
+	const ceiling = Math.max(timeoutMs, WAIT_CEILING_MS)
 	const start = Date.now()
 	while (!check()) {
-		if (Date.now() - start > timeoutMs) throw new Error("waitFor timed out")
+		if (Date.now() - start > ceiling) throw new Error(`waitFor timed out after ${ceiling} ms`)
 		await new Promise((r) => setTimeout(r, 10))
 	}
 }
