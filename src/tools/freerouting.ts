@@ -2,7 +2,8 @@ import { copyFileSync, existsSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { KICAD_IMAGE } from "./env.ts"
 import { mount } from "./mount.ts"
-import { run, type RunResult } from "./exec.ts"
+import { type RunResult } from "./exec.ts"
+import { dockerRun } from "./containers.ts"
 import { FAB_RULES } from "./drc.ts"
 
 // Freerouting for a board tscircuit placed but couldn't route (crowded boards: run 9's 58×22 rover, where no tscircuit
@@ -15,7 +16,7 @@ export const JAVA_IMAGE = "eclipse-temurin:25-jre"
 export const ROUTE = { trackMm: 0.2, clearanceMm: 0.15, viaMm: 0.45, drillMm: 0.25, edgeMm: FAB_RULES.minEdgeClearanceMm + 0.05, passes: 20 }
 
 const uid = () => `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`
-const docker = (args: string[], timeoutMs: number) => run("docker", ["run", "--rm", "-u", uid(), "-e", "HOME=/tmp", ...args], { timeoutMs })
+const docker = (args: string[], timeoutMs: number): Promise<RunResult> => dockerRun("freerouting", ["-u", uid(), "-e", "HOME=/tmp", ...args], timeoutMs)
 
 // Routes work/<pcbRel> in place. Returns null when it routed every connection, else why not. widths: the track width a
 // net needs over the fab's default (a rail's IPC-2221 width, circuit.ts routedWidths): Freerouting routes it at the
