@@ -14,6 +14,7 @@ export interface FieldChange<T> { value: T; reason: string }
 
 // "N cm/mm narrower|wider": the plate's width and the track together, so the wheels keep their clearance.
 // "set the turn scale to 1.01": a real robot's turn calibration (the build guide's "Teach it how it turns").
+// "set the coast to 21.5 mm": the same calibration's coast, measured by the wheels after a straight stop.
 export function mechanicsFromRequest(request: string, current: Mechanics): FieldChange<Mechanics> | null {
 	const m = /(\d+(?:\.\d+)?)\s*(cm|mm)\s+(narrower|wider)/i.exec(request)
 	if (m) {
@@ -22,6 +23,9 @@ export function mechanicsFromRequest(request: string, current: Mechanics): Field
 	}
 	const turn = /turn scale (?:to |of |= ?)?(\d+(?:\.\d+)?)/i.exec(request)
 	if (turn) return { value: { ...current, drive: { ...current.drive, turnScale: Number(turn[1]) } }, reason: `engineer measured it: ${request} (the odometry's track times this; rover_odo.h RoverCal)` }
+	// "set the coast to 21.5 mm": how far it rolls on after a stop, from a turn calibration (the go-to's first stop allows for it).
+	const coast = /\bcoast (?:to |of |= ?)?(\d+(?:\.\d+)?)\s*mm\b/i.exec(request)
+	if (coast) return { value: { ...current, drive: { ...current.drive, coastMm: Number(coast[1]) } }, reason: `engineer measured it: ${request} (the go-to stops that much early; rover_odo.h ROVER_COAST_MM)` }
 	return null
 }
 

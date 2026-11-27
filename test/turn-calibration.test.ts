@@ -40,3 +40,15 @@ test("a calibration spin's counted turns over the physics' yaw give the scale, t
 	// No calibration in the log (an older firmware, or it never finished): null, and the drive goes on without.
 	assert.equal(turnCalibrationFrom("R 0\nCAL start 1000 8\n", rows), null)
 })
+
+test("coastMm is optional, 0 to 200 mm; the firmware gets it as ROVER_COAST_MM, and the request mapper reads it", async () => {
+	const { mechanicsFromRequest } = await import("../src/runner/request-map.ts")
+	const v = eurobot()
+	assert.doesNotMatch(roverHeader({ revision: 1, versions: {} as never, values: v }), /ROVER_COAST_MM/)
+	v.mechanics.drive.coastMm = 21.5
+	assert.equal(mechanicsShapeError(v.mechanics), null)
+	assert.match(roverHeader({ revision: 1, versions: {} as never, values: v }), /#define ROVER_COAST_MM 21\.5f/)
+	for (const bad of [-1, 250, "20"]) { v.mechanics.drive.coastMm = bad; assert.match(mechanicsShapeError(v.mechanics) ?? "", /coastMm/) }
+	assert.equal(mechanicsFromRequest("set the coast to 21.5 mm", eurobot().mechanics)!.value.drive.coastMm, 21.5)
+	assert.equal(mechanicsFromRequest("the coast is nice", eurobot().mechanics), null)
+})
