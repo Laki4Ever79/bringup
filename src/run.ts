@@ -1,4 +1,4 @@
-import { resolveProvider } from "./inference/providers.ts"
+import { baseRunMs, buildGraceMs, runDeadline } from "./runner/run-time.ts"
 import { readBrief } from "./brief-file.ts"
 import { sweepStaleTemp } from "./tmp.ts"
 import { modelLimitOf } from "./inference/limit.ts"
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 import { OWNERS, type ContractSnapshot, type FieldName } from "./contract/types.ts"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
-import { createBoardBuilder, createArmBuilder, createArmSimBuilder, createCncSimBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
+import { buildsInFlight, createBoardBuilder, createArmBuilder, createArmSimBuilder, createCncSimBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createBomWriter } from "./agents/bom.ts"
@@ -116,12 +116,11 @@ export function changesMayStart(first: Settlement, reviewRound: number): boolean
 	return first.settled || reviewRound > 0
 }
 
-// The whole run's time limit: 30 min for the design (60 on the Claude subscription, whose turns take about 20 s each:
-// the first rover run there, 15 Nov, hit 30 min with a board build in flight), plus one change timeout per scripted
-// change request. BRINGUP_TIMEOUT_MIN overrides it.
+// The whole run's time limit: the design's (runner/run-time.ts baseRunMs: 30 min, 60 on the Claude subscription,
+// BRINGUP_TIMEOUT_MIN), plus one change timeout per scripted change request. A build still running then is waited for
+// (runDeadline, buildGraceMs).
 export function runTimeoutMs(opts: Pick<RunOptions, "timeoutMs" | "changes" | "changeTimeoutMs">, env: Record<string, string | undefined> = process.env): number {
-	const base = Number(env.BRINGUP_TIMEOUT_MIN) > 0 ? Number(env.BRINGUP_TIMEOUT_MIN) * 60_000 : resolveProvider(env)?.protocol === "claude-code" ? 60 * 60_000 : 30 * 60_000
-	return opts.timeoutMs ?? base + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
+	return opts.timeoutMs ?? baseRunMs(env) + (opts.changes ?? []).length * (opts.changeTimeoutMs ?? CHANGE_TIMEOUT_MS)
 }
 
 // Runs one design from a brief until the consistency participant reports design.settled.
@@ -299,7 +298,9 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	const decisions = watchDecisions(opts.outDir, (d) => engineer.decide(d))
 
 	const timeoutMs = runTimeoutMs(opts)
-	const deadline = new Promise<Settlement>((r) => setTimeout(() => r({ settled: false, revision: state.contract.revision }), timeoutMs).unref())
+	// An explicit timeout (tests, a system's board runs) is exact; otherwise a build in flight at the cap is waited for.
+	const graceMs = opts.timeoutMs !== undefined ? 0 : buildGraceMs()
+	const deadline = runDeadline(timeoutMs, graceMs, () => [...buildsInFlight.keys()], (kinds) => console.log(`bringup: the run's ${Math.round(timeoutMs / 60_000)} min are up while the ${kinds.join(" and ")} build${kinds.length > 1 ? "s are" : " is"} still running: waiting for ${kinds.length > 1 ? "them" : "it"}, up to ${Math.round(graceMs / 60_000)} min more`)).then((): Settlement => ({ settled: false, revision: state.contract.revision }))
 	const outcome = await Promise.race([settledPromise, deadline, limitHit])
 	// Scripted changes, until the last one has settled or the run's time is up.
 	if (scripted) await Promise.race([allChanged, deadline])

@@ -13,6 +13,7 @@ import { join, resolve } from "node:path"
 import { bringupHome } from "../tools/env.ts"
 import { resolveProvider } from "../inference/providers.ts"
 import { estimate } from "./estimate.ts"
+import { runTimeText } from "../runner/run-time.ts"
 import type { Plan } from "./plan.ts"
 
 export interface BriefQuestion {
@@ -31,6 +32,8 @@ export interface RunPlan {
 	estimate: { minutes: [number, number] | null; usd: [number, number] | null; basis: string }
 	provider: string | null
 	planCostUsd: number
+	// How long the run may take (runner/run-time.ts): read at the plan, so the person approves the time too.
+	runTime?: string
 	createdAt: string
 	approvedAt: string | null
 }
@@ -90,7 +93,7 @@ export function makeRunPlan(subject: { brief: string } | { system: { name?: stri
 	const questions = perBoard[0].map((q, i) => (perBoard.every((b) => b[i].answered) ? q : perBoard.find((b) => !b[i].answered)![i]))
 	const title = isBrief ? (/^#\s*(?:Brief:\s*)?(.+)$/m.exec(subject.brief)?.[1] ?? subject.brief.split("\n")[0]).slice(0, 120) : (subject.system.name ?? "a system")
 	const est = estimate({ spec: { boards: Array.from({ length: boards }, (_, i) => ({ name: `b${i}` })) } } as unknown as Plan, outRoot)
-	return save({ id: `rp-${randomBytes(6).toString("hex")}`, kind: isBrief ? "brief" : "system", subjectHash: subjectHash(text), title, questions, boards, estimate: est, provider: resolveProvider(env)?.id ?? null, planCostUsd: 0, createdAt: now.toISOString(), approvedAt: null })
+	return save({ id: `rp-${randomBytes(6).toString("hex")}`, kind: isBrief ? "brief" : "system", subjectHash: subjectHash(text), title, questions, boards, estimate: est, provider: resolveProvider(env)?.id ?? null, planCostUsd: 0, runTime: runTimeText(env), createdAt: now.toISOString(), approvedAt: null })
 }
 
 export function approveRunPlan(id: string, now = new Date()): RunPlan | null {
@@ -118,6 +121,7 @@ export function planText(p: RunPlan): string {
 	return [
 		`Plan ${p.id}: ${p.title} (${p.boards} board${p.boards > 1 ? "s" : ""})`,
 		`Estimate: ${mins(p.estimate.minutes)}, ${money(p.estimate.usd)} on ${p.provider ?? "no AI configured"}. ${p.estimate.basis}`,
+		...(p.runTime ? [p.runTime] : []),
 		open.length ? `The brief leaves open (the agents would assume this; say it in the brief to change it):\n${open.map((q) => `  - ${q.topic}: ${q.assumption}`).join("\n")}` : "The brief states its size, power, environment and job.",
 		"Bringup does its best and runs every check, but a first design isn't guaranteed to work; the clearer the brief, the fewer paid runs.",
 		`This plan cost $${p.planCostUsd.toFixed(2)} (plain code, no model call).`,

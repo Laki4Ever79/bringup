@@ -44,6 +44,9 @@ export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "tes
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
 // its builds awaited one after another instead of concurrently. Runs never pass one.
+// The builds running now, by kind, with their start time: the run waits for them at its time cap (runner/run-time.ts).
+export const buildsInFlight = new Map<string, number>()
+
 export class BuildLock {
 	private tail: Promise<void> = Promise.resolve()
 
@@ -138,7 +141,8 @@ export function createBuilder<K extends ArtifactKind>(opts: {
 			const dir = join(s.outDir, opts.kind, `rev-${snapshot.revision}`)
 			mkdirSync(dir, { recursive: true })
 			const ctx = { revision: snapshot.revision, snapshot, dir }
-			const artifact = await (opts.lock ? opts.lock.run(() => opts.build(ctx)) : opts.build(ctx))
+			buildsInFlight.set(opts.kind, Date.now())
+			const artifact = await (opts.lock ? opts.lock.run(() => opts.build(ctx)) : opts.build(ctx)).finally(() => buildsInFlight.delete(opts.kind))
 			;(s.artifacts as Record<string, unknown>)[opts.kind] = artifact
 			s.artifactInputs[opts.kind] = inputs
 			recordDerived()
