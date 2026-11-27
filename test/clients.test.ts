@@ -4,7 +4,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { addClient, configPath, entry, snippet } from "../src/setup/clients.ts"
+import { addClient, configPath, entry, isolatedClientEnv, snippet } from "../src/setup/clients.ts"
 import { tempDir } from "./helpers.ts"
 
 test("each client's user config, per OS", () => {
@@ -23,7 +23,7 @@ test("each client's user config, per OS", () => {
 
 test("add: merged beside the other servers, the old file kept, twice is once, comments left alone", () => {
 	const home = tempDir()
-	const env = { HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData", "Roaming") }
+	const env = isolatedClientEnv(home)
 	// A config that doesn't exist yet is made.
 	const fresh = addClient("windsurf", { platform: "linux", env })
 	assert.equal(fresh.written, true)
@@ -55,4 +55,16 @@ test("add: merged beside the other servers, the old file kept, twice is once, co
 	assert.equal(addClient("cursor", { platform: "linux", env, printOnly: true }).written, false)
 	assert.ok(!existsSync(configPath("cursor", "linux", env).path))
 	assert.match(addClient("claude-code").message, /claude mcp add bringup -- npx -y bringup-mcp/)
+})
+
+test("the sandbox: every client's config inside the isolated env's dir on every OS; a path outside it is refused, nothing written", () => {
+	const home = tempDir()
+	const env = isolatedClientEnv(home)
+	for (const platform of ["linux", "darwin", "win32"] as const)
+		for (const client of ["claude-desktop", "cursor", "vscode", "windsurf"] as const)
+			assert.ok(configPath(client, platform, env).path.startsWith(home), `${client} on ${platform}: ${configPath(client, platform, env).path}`)
+	// The env that caused it: HOME in the sandbox, XDG_CONFIG_HOME still the real one.
+	const leaky = { ...env, XDG_CONFIG_HOME: join(tempDir(), "real-config") }
+	assert.throws(() => addClient("vscode", { platform: "linux", env: leaky }), /outside BRINGUP_CONFIG_SANDBOX/)
+	assert.ok(!existsSync(join(leaky.XDG_CONFIG_HOME, "Code")))
 })

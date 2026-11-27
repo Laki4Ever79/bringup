@@ -6,7 +6,7 @@
 // Public, in the engine.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 export const CLIENTS = ["claude-desktop", "cursor", "vscode", "windsurf", "claude-code"] as const
 export type Client = (typeof CLIENTS)[number]
@@ -46,6 +46,21 @@ export function snippet(client: Exclude<Client, "claude-code">, platform: NodeJS
 	return JSON.stringify({ [configPath(client, platform).key]: { [SERVER_NAME]: entry(client, platform) } }, null, 2)
 }
 
+// Tests and scripts: an env whose every per-user config location (HOME, USERPROFILE, APPDATA, XDG_CONFIG_HOME) lies in
+// dir, with BRINGUP_CONFIG_SANDBOX=dir so add refuses any path outside it (27 Nov 2026: a check that set only HOME wrote
+// into the user's real Claude Desktop and VS Code configs through XDG_CONFIG_HOME).
+export function isolatedClientEnv(dir: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+	return { ...base, HOME: dir, USERPROFILE: dir, APPDATA: join(dir, "AppData", "Roaming"), XDG_CONFIG_HOME: join(dir, ".config"), BRINGUP_CONFIG_SANDBOX: dir }
+}
+
+// With BRINGUP_CONFIG_SANDBOX set, a config path outside it is refused before anything is read or written.
+export function sandboxProblem(path: string, env: NodeJS.ProcessEnv): string | null {
+	const box = env.BRINGUP_CONFIG_SANDBOX
+	if (!box) return null
+	const rel = relative(resolve(box), resolve(path))
+	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)) ? null : `${path} lies outside BRINGUP_CONFIG_SANDBOX (${box}): refused, nothing written`
+}
+
 export interface AddResult {
 	written: boolean
 	path?: string
@@ -55,7 +70,10 @@ export interface AddResult {
 export function addClient(client: Client, opts: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; printOnly?: boolean } = {}): AddResult {
 	const platform = opts.platform ?? process.platform
 	if (client === "claude-code") return { written: false, message: "Claude Code adds servers itself:\n\n  claude mcp add bringup -- npx -y bringup-mcp\n" }
-	const { path, key } = configPath(client, platform, opts.env ?? process.env)
+	const env = opts.env ?? process.env
+	const { path, key } = configPath(client, platform, env)
+	const outside = sandboxProblem(path, env)
+	if (outside) throw new Error(outside)
 	const show = `${path}:\n\n${snippet(client, platform)}\n`
 	if (opts.printOnly) return { written: false, path, message: `Add this to ${show}` }
 	let config: Record<string, unknown> = {}
@@ -86,7 +104,12 @@ export function addCli(argv: string[], say: { out: (m: string) => void; err: (m:
 		say.err(`usage: npx bringup-mcp add <${CLIENTS.join("|")}> [--print]\n  writes Bringup's MCP server into that client's config (the old file kept as .bak); --print only shows it`)
 		return client ? 2 : 0
 	}
-	const r = addClient(client as Client, { printOnly: argv.includes("--print") })
-	say.out(r.message)
-	return 0
+	try {
+		const r = addClient(client as Client, { printOnly: argv.includes("--print") })
+		say.out(r.message)
+		return 0
+	} catch (e) {
+		say.err(`bringup: ${(e as Error).message}`)
+		return 1
+	}
 }

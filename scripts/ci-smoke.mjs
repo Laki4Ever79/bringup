@@ -276,8 +276,8 @@ await step("MCP handshake (initialize, tools/list)", async () => {
 if (packed) {
 	await step("bringup-mcp add <client>, each entry started as written", async () => {
 		const home = join(out, "clients-home")
-		const cenv = { ...env, HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData", "Roaming") }
-		delete cenv.XDG_CONFIG_HOME
+		// As src/setup/clients.ts isolatedClientEnv: every config location in the temp home, and add refuses any path outside.
+		const cenv = { ...env, HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData", "Roaming"), XDG_CONFIG_HOME: join(home, ".config"), BRINGUP_CONFIG_SANDBOX: home }
 		const said = []
 		for (const client of ["claude-desktop", "cursor", "vscode", "windsurf"]) {
 			const r = spawnSync(`npx --no-install bringup-mcp add ${client}`, { shell: true, cwd: user, env: cenv, encoding: "utf8", timeout: 120_000 })
