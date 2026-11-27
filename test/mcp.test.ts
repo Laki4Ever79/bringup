@@ -650,6 +650,12 @@ test("get_pictures returns the newest board's 3D picture as an image and lists e
 		const arm = JSON.parse((await mcp.call("get_pictures", { runId: "bare", drive: true })).text)
 		assert.deepEqual(arm.pickAndPlace, { result: "pass", reason: "5 of 5 cubes landed in the cup", landed: 5, attempts: 5, worstMm: 7.2, cycleS: [4.3] })
 		assert.match(arm.notes.join(" "), /no pick-and-place pictures: the arm's parts weren't built/)
+		// A CNC's simulated machine: its checks and the toolpath's pulse check, always; no toolpath, a note why.
+		mkdirSync(join(outRoot, "bare", "cncsim", "rev-3"), { recursive: true })
+		writeFileSync(join(outRoot, "bare", "cncsim", "rev-3", "result.json"), JSON.stringify({ result: "pass", checks: [{ name: "X steps", ok: true, detail: "800 step pulses on PA0, 800 expected" }] }))
+		const machine = JSON.parse((await mcp.call("get_pictures", { runId: "bare", drive: true })).text)
+		assert.deepEqual(machine.machine, { result: "pass", checks: ["pass X steps: 800 step pulses on PA0, 800 expected"] })
+		assert.match(machine.notes.join(" "), /no toolpath pictures: the simulated machine recorded no toolpath/)
 	} finally {
 		await mcp.close()
 	}

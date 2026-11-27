@@ -64,8 +64,13 @@ export async function casePictures(python: string, root: string, enclosureDir: s
 	}
 }
 
-// pictures/drive/pictures.json: { revision, files, at }, the drive the pictures show.
+// pictures/<kind>/pictures.json: { revision, files, at }, the simulation's revision the pictures show (the drive's, the
+// arm's pick-and-place, the CNC's toolpath): Studio's views and the report read this one format.
 export const DRIVE_PICTURES_FILE = "pictures.json"
+function writePicturesIndex(dir: string, simDir: string, files: string[], sub: string): void {
+	const revision = Number(/rev-(\d+)$/.exec(simDir.replace(/[\\/]+$/, ""))?.[1]) || null
+	writeFileSync(join(dir, DRIVE_PICTURES_FILE), JSON.stringify({ revision, files: files.map((f) => f.replace(new RegExp(`^${sub}/`), "")), at: new Date().toISOString() }, null, "\t"))
+}
 
 // The rover's simulated drive (py/drive_pictures.py): the robot's own meshes at the poses of its MuJoCo drive's
 // trajectory, on the course, drawn without MuJoCo or OpenGL: from above with the whole path, three key frames following
@@ -79,8 +84,7 @@ export async function drivePictures(python: string, root: string, chassisDir: st
 		const { stdout } = await exec(python, [join(root, "py", "drive_pictures.py"), chassisDir, driveDir, dir], { timeout: 600_000 })
 		const files = stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => /\.(png|gif)$/.test(f)).map((f) => `drive/${f}`)
 		// Which drive they show (the newest when they were made): Studio's Drive tab and the report label them by it.
-		const revision = Number(/rev-(\d+)$/.exec(driveDir.replace(/[\\/]+$/, ""))?.[1]) || null
-		writeFileSync(join(dir, DRIVE_PICTURES_FILE), JSON.stringify({ revision, files: files.map((f) => f.replace(/^drive\//, "")), at: new Date().toISOString() }, null, "\t"))
+		writePicturesIndex(dir, driveDir, files, "drive")
 		log(`drive pictures: ${files.length} in ${dir}`)
 		return { files, note: null }
 	} catch (e) {
@@ -99,11 +103,27 @@ export async function armSimPictures(python: string, root: string, posedDir: str
 		const { stdout } = await exec(python, [join(root, "py", "arm_pictures.py"), posedDir, simDir, dir], { timeout: 600_000 })
 		const files = stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => /\.(png|gif)$/.test(f)).map((f) => `armsim/${f}`)
 		// Which pick-and-place they show, as for the drive's (pictures.json): the page and the report label them by it.
-		const revision = Number(/rev-(\d+)$/.exec(simDir.replace(/[\\/]+$/, ""))?.[1]) || null
-		writeFileSync(join(dir, DRIVE_PICTURES_FILE), JSON.stringify({ revision, files: files.map((f) => f.replace(/^armsim\//, "")), at: new Date().toISOString() }, null, "\t"))
+		writePicturesIndex(dir, simDir, files, "armsim")
 		log(`pick-and-place pictures: ${files.length} in ${dir}`)
 		return { files, note: null }
 	} catch (e) {
 		return { files: [], note: `no pick-and-place pictures: py/arm_pictures.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
+	}
+}
+
+// The CNC's simulated toolpath (py/cnc_pictures.py, from cncsim/rev-N/toolpath.json: grblHAL's reported positions while a
+// short program ran in Renode, and its STEP pulses at the pins): from above with a millimetre grid and the bed's inset,
+// from the front left with the plunge, and a GIF of the tool along it. Files under cncsim/ in outDir.
+export async function cncSimPictures(python: string, root: string, simDir: string, outDir: string, log: (m: string) => void = () => {}): Promise<AssemblyPictures> {
+	if (!existsSync(join(simDir, "toolpath.json"))) return { files: [], note: `no toolpath pictures: ${simDir} holds no toolpath (the simulation didn't run, or ran before toolpaths were recorded)` }
+	const dir = join(outDir, "cncsim")
+	try {
+		const { stdout } = await exec(python, [join(root, "py", "cnc_pictures.py"), simDir, dir], { timeout: 300_000 })
+		const files = stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => /\.(png|gif)$/.test(f)).map((f) => `cncsim/${f}`)
+		writePicturesIndex(dir, simDir, files, "cncsim")
+		log(`toolpath pictures: ${files.length} in ${dir}`)
+		return { files, note: null }
+	} catch (e) {
+		return { files: [], note: `no toolpath pictures: py/cnc_pictures.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
 	}
 }

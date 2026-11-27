@@ -1,6 +1,6 @@
 import { providerProblem } from "../inference/providers.ts"
 import { continueSeed } from "../runner/continue.ts"
-import { armPictures, armSimPictures, assemblyPictures, casePictures, drivePictures } from "../package/assembly-pictures.ts"
+import { armPictures, armSimPictures, assemblyPictures, casePictures, cncSimPictures, drivePictures } from "../package/assembly-pictures.ts"
 import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
@@ -558,12 +558,12 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	server.registerTool(
 		"get_pictures",
 		{
-			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). A robot's simulation (its firmware in QEMU driving the MuJoCo model: a rover's drive, an arm's pick-and-place) comes back as its verdict; with drive: true also as pictures of it moving and a GIF (30-90 s). Every file is also listed by path.",
+			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). A robot's simulation (its firmware in QEMU driving the MuJoCo model: a rover's drive, an arm's pick-and-place; a CNC's grblHAL in Renode) comes back as its verdict; with drive: true also as pictures of it moving and a GIF (a CNC: its toolpath; 2-90 s). Every file is also listed by path.",
 			inputSchema: {
 				runId: z.string(),
 				board: BOARD,
 				stills: z.boolean().optional().describe("Render 3D stills into <run>/pictures (py/stills.py, the case tools): the board in its case, or a robot or arm step by step. Default false."),
-				drive: z.boolean().optional().describe("Render the robot's simulation into <run>/pictures (the case tools): a rover's drive (drive/: the course from above with its path, three frames following the robot, drive.gif) or an arm's pick-and-place (armsim/: pick, carry, drop, the landings from above, arm.gif). Default false."),
+				drive: z.boolean().optional().describe("Render the robot's simulation into <run>/pictures (the case tools): a rover's drive (drive/: the course from above with its path, three frames following the robot, drive.gif) an arm's pick-and-place (armsim/: pick, carry, drop, the landings from above, arm.gif) or a CNC's toolpath (cncsim/: from above on a mm grid with the bed, from the front left, cnc.gif). Default false."),
 			},
 		},
 		async ({ runId, board, stills, drive }) => {
@@ -625,10 +625,37 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 					notes.push(`the pick-and-place's result (${join(armsimRev, "arm.json")}) couldn't be read`)
 				}
 			}
+			// A CNC's simulated machine (grblHAL in Renode, src/tools/cnc-sim.ts): its checks always, and the toolpath it ran.
+			const cncRev = newest(join(b.dir, "cncsim"), "result.json")
+			let cncVerdict: Record<string, unknown> | undefined
+			if (cncRev) {
+				try {
+					const c = JSON.parse(readFileSync(join(cncRev, "result.json"), "utf8")) as { result: string; checks?: { name: string; ok: boolean; detail: string }[] }
+					const t = existsSync(join(cncRev, "toolpath.json")) ? (JSON.parse(readFileSync(join(cncRev, "toolpath.json"), "utf8")) as { travelMm?: Record<string, number>; pulseCheck?: { axis: string; ok: boolean; detail: string }[]; finished?: boolean }) : null
+					cncVerdict = { result: c.result, checks: (c.checks ?? []).map((x) => `${x.ok ? "pass" : "FAIL"} ${x.name}: ${x.detail}`), ...(t ? { toolpath: { finished: t.finished, travelMm: t.travelMm, pulses: (t.pulseCheck ?? []).map((x) => `${x.ok ? "ok" : "MISMATCH"} ${x.axis.toUpperCase()}: ${x.detail}`) } } : {}) }
+				} catch {
+					notes.push(`the simulated machine's result (${join(cncRev, "result.json")}) couldn't be read`)
+				}
+			}
 			const drivePngs: { what: string; path: string }[] = []
 			const armPosed = newest(join(b.dir, "arm"), join("arm", "posed", "groups.json"))
 			const armTraj = newest(join(b.dir, "armsim"), "trajectory.json")
-			if (drive && (armPosed || armsimRev) && !newest(join(b.dir, "chassis"), "chassis.stl")) {
+			const cncTool = newest(join(b.dir, "cncsim"), "toolpath.json")
+			if (drive && (cncRev || cncTool)) {
+				const env = await (deps.detect ?? (() => detectEnvironment(root)))()
+				if (!cncTool) notes.push("no toolpath pictures: the simulated machine recorded no toolpath (it runs grblHAL on an STM32F4 in Renode; a run from before toolpaths were recorded has none)")
+				else if (!env.python) notes.push("no toolpath pictures: they need the case tools (`npx bringup-mcp setup case`, after your user says yes)")
+				else {
+					const out = join(b.dir, "pictures")
+					const p = await cncSimPictures(env.python, root, cncTool, out)
+					if (p.note) notes.push(p.note)
+					for (const f of p.files) {
+						const entry = { what: f.endsWith(".gif") ? "the toolpath, animated (GIF)" : f.endsWith("-3d.png") ? "toolpath: from the front left" : "toolpath: from above, on the bed", path: join(out, f) }
+						files.push(entry)
+						if (/cnc-toolpath(-3d)?\.png$/.test(f)) drivePngs.push(entry)
+					}
+				}
+			} else if (drive && (armPosed || armsimRev) && !newest(join(b.dir, "chassis"), "chassis.stl")) {
 				const env = await (deps.detect ?? (() => detectEnvironment(root)))()
 				if (!armPosed || !armTraj) notes.push(!armPosed ? "no pick-and-place pictures: the arm's parts weren't built" : "no pick-and-place pictures: the arm's simulation didn't run (it needs `npx bringup-mcp setup firmware sim`, after your user says yes)")
 				else if (!env.python) notes.push("no pick-and-place pictures: they need the case tools (`npx bringup-mcp setup case`, after your user says yes)")
@@ -669,7 +696,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			const shown = [pngs[0], finished, ...drivePngs].filter((f): f is { what: string; path: string } => Boolean(f) && statSync(f!.path).size <= 2_000_000)
 			return {
 				content: [
-					{ type: "text" as const, text: JSON.stringify({ runId, files, ...(driveVerdict ? { drive: driveVerdict } : {}), ...(armVerdict ? { pickAndPlace: armVerdict } : {}), ...(notes.length ? { notes } : {}) }, null, 2) },
+					{ type: "text" as const, text: JSON.stringify({ runId, files, ...(driveVerdict ? { drive: driveVerdict } : {}), ...(armVerdict ? { pickAndPlace: armVerdict } : {}), ...(cncVerdict ? { machine: cncVerdict } : {}), ...(notes.length ? { notes } : {}) }, null, 2) },
 					...shown.map((f) => ({ type: "image" as const, data: readFileSync(f.path).toString("base64"), mimeType: "image/png" })),
 				],
 			}

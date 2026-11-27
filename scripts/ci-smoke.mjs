@@ -216,6 +216,15 @@ async function design(server, expect = {}, brief = LOGGER) {
 			const ev = readFileSync(join(start.outDir, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((e) => e.payload?.kind === "drive").at(-1)
 			if (ev) why = ` (the drive's last event: ${ev.type} ${JSON.stringify(ev.payload).slice(0, 600)})`
 		} catch {}
+		// The firmware's console (UART0) of the newest drive: how far it booted (Windows stopped after "entry ..." once,
+		// then after a lone "G"). Its first lines and its last bytes in hex, in the job log.
+		try {
+			const revs = fs.filter((x) => /[\\/]drive[\\/]rev-\d+[\\/]uart0\.txt$/.test(x.f)).sort((a, b) => statSync(a.f).mtimeMs - statSync(b.f).mtimeMs)
+			if (revs.length) {
+				const raw = readFileSync(revs.at(-1).f)
+				console.log(`--- ${revs.at(-1).f} (${raw.length} bytes) ---\n${raw.toString("latin1").split(/\r?\n/).slice(0, 40).join("\n")}\n--- last bytes: ${raw.subarray(-64).toString("hex")} ---`)
+			}
+		} catch {}
 		throw new Error(`settled, but the MuJoCo drive ${drive ? `${drive.result}: ${drive.reason || (drive.segments ?? []).filter((x) => !x.pass).map((x) => `${x.name}: ${x.detail}`).join("; ")}` : "never ran"}${why}; ${said}`)
 	}
 	const missing = [expect.board && !pics && "board pictures", expect.printed && !printed && "printed parts", expect.ros && !ros && "the ROS workspace", expect.firmware && !firmware && "a firmware image"].filter(Boolean)

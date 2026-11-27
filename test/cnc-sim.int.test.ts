@@ -3,7 +3,7 @@
 // most of it).
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, rmSync } from "node:fs"
+import { readFileSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { CNC_DESIGN, CNC_MACHINE, CNC_TARGETS } from "../src/inference/scripts.ts"
@@ -20,6 +20,12 @@ test("the simulated CNC: exact steps per motor, the e-stop, the stall stop and a
 	const r = runCncSim(root, s, dir)
 	assert.equal(r.result, "pass", `${JSON.stringify(r.checks, null, 1)}\n(the run's files: ${dir})`)
 	assert.deepEqual(r.checks.map((c) => c.name), ["X steps", "Y steps", "Y2 (M3) steps", "Z steps", "e-stop", "stall stop", "hard limit"])
+	// The toolpath for get_pictures: the program ran to its end, and each axis's STEP pulses at the pins match the travel
+	// grblHAL reported.
+	const tp = JSON.parse(readFileSync(join(dir, "toolpath.json"), "utf8"))
+	assert.equal(tp.finished, true, JSON.stringify(tp).slice(0, 400))
+	assert.deepEqual(tp.pulseCheck.map((c: { ok: boolean }) => c.ok), [true, true, true], JSON.stringify(tp.pulseCheck))
+	assert.ok(Math.abs(Math.max(...tp.points.map((q: number[]) => q[0])) - 6) < 0.05 && Math.abs(Math.min(...tp.points.map((q: number[]) => q[2])) + 1) < 0.05)
 	// A pass leaves nothing behind (about 70 MB: the grblHAL copy and its build); a failure keeps its files to look at.
 	rmSync(dir, { recursive: true, force: true })
 })

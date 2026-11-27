@@ -37,3 +37,26 @@ test("a run's judgement: exact steps per motor, the alarms by their codes, the k
 	const miss = judgeCncSim("ALARM:14\n", "('STEPS A', {0: 799, 3: 400, 6: 0})\n('STEPS B', {1: 200})", plan)
 	assert.deepEqual(miss.checks.filter((c) => !c.ok).map((c) => c.name), ["X steps", "Y2 (M3) steps", "e-stop", "hard limit"])
 })
+
+test("the toolpath: a program after every check, grblHAL's reported positions from where it started, its STEP pulses at the pins against them", async () => {
+	const { toolpathFrom, TOOLPATH_PROGRAM } = await import("../src/tools/cnc-sim.ts")
+	const s = cnc()
+	const plan = cncSimPlan(s, [400, 400, 400], stallParams(s, defaultCheckCatalog()!))
+	assert.deepEqual(plan.trace.map((t) => `${t.axis} P${t.step.port}${t.step.pin}${t.dir ? ` P${t.dir.port}${t.dir.pin}` : ""}`).length, 3)
+	const script = cncSimScript({ repl: "/r.repl", elf: "/f.elf", uart: "/u.txt", settings: ["$22=1"], plan })
+	// The checks keep their place: the program comes after the hard limit's status query.
+	assert.ok(script.indexOf("b.rec = True") > script.lastIndexOf("sysbus.exti OnGPIO 13 true"))
+	for (const l of TOOLPATH_PROGRAM) assert.ok(script.includes(`WriteLine "${l}"`), l)
+	assert.ok(script.includes("print('TOOLPATH PULSES'"))
+	// grblHAL's status reports after the last reset's banner, from where it started; the pins' pulses against them.
+	const uart = "ALARM:1\n<Alarm|MPos:9,9,9|Bf:1>\nGrblHAL 1.1f ['$' or '$HELP' for help]\nok\n" + [[2, 1, -0.5], [2, 1, -1.5], [8, 1, -1.5], [8, 4, -1.5], [2, 4, -1.5], [2, 1, -1.5], [8, 4, -1.5], [8, 4, -0.5]].map((p, i, a) => `<${i === a.length - 1 ? "Idle" : "Run"}|MPos:${p.join(",")}|FS:0,0>\nok\n`).join("")
+	const p = toolpathFrom(uart, "('TOOLPATH PULSES', {'x': 7200, 'y': 3600L, 'z': 800})", plan)!
+	assert.deepEqual(p.originMm, [2, 1, -0.5])
+	assert.deepEqual(p.points[0], [0, 0, 0])
+	assert.deepEqual(p.points.at(-1), [6, 3, 0])
+	assert.equal(p.finished, true)
+	assert.deepEqual(p.travelMm, { x: 18, y: 9, z: 2 })
+	assert.deepEqual(p.pulseCheck.map((c) => c.ok), [true, true, true])
+	assert.deepEqual(toolpathFrom(uart, "('TOOLPATH PULSES', {'x': 7000, 'y': 3600, 'z': 800})", plan)!.pulseCheck.map((c) => c.ok), [false, true, true])
+	assert.equal(toolpathFrom("no reports", "", plan), null)
+})

@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildChassis } from "../src/tools/chassis.ts"
-import { assemblyPictures, casePictures, drivePictures } from "../src/package/assembly-pictures.ts"
+import { assemblyPictures, casePictures, cncSimPictures, drivePictures } from "../src/package/assembly-pictures.ts"
 import { buildEnclosure } from "../src/tools/enclosure.ts"
 import { ASSEMBLY_STEPS } from "../src/geometry/assembly-steps.js"
 import { LOGGER_DESIGN, ROVER_BOARD } from "../src/inference/scripts.ts"
@@ -64,4 +64,19 @@ test("a rover's simulated drive is drawn from its trajectory: the course from ab
 	assert.equal(readFileSync(join(out, "drive/drive.gif")).subarray(0, 6).toString(), "GIF89a")
 	// No trajectory: a note, no pictures.
 	assert.match((await drivePictures(python!, root, work, tempDir(), out)).note ?? "", /holds no trajectory/)
+})
+
+test("a CNC's toolpath is drawn from grblHAL's reported positions: from above on a mm grid with the bed, from the front left, a GIF; pictures.json names the revision", { skip: python ? false : "no .venv python" }, async () => {
+	const sim = join(tempDir(), "rev-7"), out = tempDir()
+	mkdirSync(sim, { recursive: true })
+	const points = [[0, 0, 0], [0, 0, -1], [6, 0, -1], [6, 3, -1], [0, 3, -1], [0, 0, -1], [6, 3, -1], [6, 3, 0]]
+	writeFileSync(join(sim, "toolpath.json"), JSON.stringify({ points, originMm: [2.7, 1, -0.5], finished: true, travelMm: { x: 18, y: 9, z: 2 }, workAreaMm: { x: 300, y: 200, z: 50 }, pulseCheck: [{ axis: "x", ok: true, detail: "7200 STEP pulses = 18.00 mm at 400/mm; grblHAL reported 18 mm" }] }))
+	const r = await cncSimPictures(python!, root, sim, out)
+	assert.equal(r.note, null)
+	assert.deepEqual(r.files, ["cncsim/cnc-toolpath.png", "cncsim/cnc-toolpath-3d.png", "cncsim/cnc.gif"])
+	assert.equal(readFileSync(join(out, "cncsim/cnc.gif")).subarray(0, 6).toString(), "GIF89a")
+	const index = JSON.parse(readFileSync(join(out, "cncsim/pictures.json"), "utf8"))
+	assert.equal(index.revision, 7)
+	assert.deepEqual(index.files, ["cnc-toolpath.png", "cnc-toolpath-3d.png", "cnc.gif"])
+	assert.match((await cncSimPictures(python!, root, tempDir(), out)).note ?? "", /holds no toolpath/)
 })

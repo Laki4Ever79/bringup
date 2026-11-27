@@ -828,3 +828,15 @@ should be presented the solution, so we are made sure they are happy with it."
       revision cap, a cost cap), and says what it would need.
 - [ ] **Say it plainly:** the docs and Studio say what Bringup promises (its best, every check run, the open problems
       named) and what it doesn't (a design guaranteed to work first time).
+
+## Showing every robot kind's simulation through get_pictures (bringup-lead-2, 27 Nov 2026)
+
+Done: a rover's drive, an arm's pick-and-place and a grblHAL CNC's toolpath come back as pictures and a GIF
+(`get_pictures` with `drive: true`; py/drive_pictures.py, py/arm_pictures.py, py/cnc_pictures.py).
+
+- [ ] **A FluidNC CNC's toolpath through QEMU** (lead-2: "a later item to note in the backlog, not now"). The CNC sim runs
+      only grblHAL on an STM32F4 in Renode; both real CNC runs chose FluidNC on an ESP32, which Espressif's QEMU (already
+      shipped by `setup sim`) can run. Same picture code: grblHAL's status reports become FluidNC's.
+- [ ] **The CNC's DIR pins in Renode:** its GPIO model never shows grblHAL's direction pins in the register (bit-band and
+      byte writes), so the toolpath's shape comes from grblHAL's status reports, with each axis's STEP pulses at the pins
+      as the check. A model that shows DIR would let the pins alone draw it.
