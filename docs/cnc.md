@@ -208,3 +208,8 @@ Each failure on the way, with its general fix.
   current trip at 300-400 ms, a 150 ms load step and a low-duty stall don't. Built into grblHAL (the plugin linked:
   my_plugin_init, stall_poll in firmware.elf); the build environment now goes in grblHAL's platformio.local.ini (its
   platformio.ini reads it, git ignores it), so grblHAL's own files stay as cloned.
+- 27 Nov 2026, found by gap 12's first Renode boot ("PWM spindle failed to initialize"), two real-board bugs in the
+  generated map: grblHAL claims a PWM timer for the spindle only through an auxiliary output (Src/driver_spindles.c
+  aux_out_claim_explicit), so naming SPINDLE_PWM_PORT directly left the spindle without one; the spindle's PWM and enable
+  are now AUXOUTPUT0/1 and the e-stop's RESET input AUXINPUT0, as grblHAL's BlackPill map declares them (the warning is
+  gone in Renode). And the gantry's second Y motor (M3) needs Y_GANGED=1 to step with Y; without it grblHAL left it idle.
