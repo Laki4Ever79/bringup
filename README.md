@@ -44,8 +44,9 @@ Needs Node 22 or later. Nothing else to install first.
 
    Then ask, for example, "design a BLE temperature logger, USB-C, 50x30 mm". The first `npx` downloads about 185 MB
    (about 15 s). Without the hardware tools, the agents still design the whole contract (parts, pins, outline) and run
-   every check, and the reply says what one command would add. Cursor, Claude Desktop and other clients:
-   [docs/mcp.md](docs/mcp.md).
+   every check, and the reply says what one command would add. Claude Desktop, Cursor, VS Code or Windsurf:
+   `npx -y bringup-mcp add <claude-desktop|cursor|vscode|windsurf>` (from 0.2.4) writes it into that app's config; the
+   snippets by hand: [docs/mcp.md](docs/mcp.md#install).
 
 2. **Real boards with pictures** (from 0.2.3): `npx -y bringup-mcp setup board`, about 923 MB and 30 s, once. The next
    design builds a routed board, its JLCPCB fab files (Gerbers, BOM, pick-and-place) and pictures of it: a 3D view,

@@ -270,6 +270,42 @@ await step("MCP handshake (initialize, tools/list)", async () => {
 	const tools = await server.call("tools/list", {})
 	return `${init.result?.serverInfo?.name} ${init.result?.serverInfo?.version}, ${tools.result?.tools?.length} tools`
 })
+// Other MCP clients (Claude Desktop, Cursor, VS Code, Windsurf): `bringup-mcp add <client>` into a temp home, then the
+// server started from each written entry exactly as the client would (command and args, no shell: on Windows that's
+// `cmd /c npx`), answering the handshake and tools/list. XDG_CONFIG_HOME cleared and APPDATA set: never a real config.
+if (packed) {
+	await step("bringup-mcp add <client>, each entry started as written", async () => {
+		const home = join(out, "clients-home")
+		const cenv = { ...env, HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData", "Roaming") }
+		delete cenv.XDG_CONFIG_HOME
+		const said = []
+		for (const client of ["claude-desktop", "cursor", "vscode", "windsurf"]) {
+			const r = spawnSync(`npx --no-install bringup-mcp add ${client}`, { shell: true, cwd: user, env: cenv, encoding: "utf8", timeout: 120_000 })
+			const m = /Bringup (?:added|updated) in (.+?);/.exec(r.stdout ?? "")
+			if (r.status !== 0 || !m) throw new Error(`add ${client}: ${(r.stdout || r.stderr || "").trim()}`)
+			if (!m[1].startsWith(home)) throw new Error(`add ${client} wrote outside the temp home: ${m[1]}`)
+			const cfg = JSON.parse(readFileSync(m[1], "utf8"))
+			const e = (cfg.mcpServers ?? cfg.servers).bringup
+			const p = spawn(e.command, e.args, { cwd: user, env: cenv, stdio: ["pipe", "pipe", "ignore"] })
+			const tools = await new Promise((ok) => {
+				let buf = ""
+				const timer = setTimeout(() => ok(null), 120_000)
+				p.stdout.on("data", (d) => {
+					buf += d
+					const l = buf.split("\n").find((x) => x.includes('"id":2'))
+					if (l) (clearTimeout(timer), ok(JSON.parse(l).result?.tools?.length ?? 0))
+				})
+				p.on("error", () => (clearTimeout(timer), ok(null)))
+				for (const msg of [{ id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: client, version: "0" } } }, { method: "notifications/initialized" }, { id: 2, method: "tools/list", params: {} }]) p.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...msg }) + "\n")
+			})
+			p.stdin.end()
+			p.kill()
+			if (!tools) throw new Error(`${client}: \`${e.command} ${e.args.join(" ")}\` from ${m[1]} didn't answer tools/list`)
+			said.push(`${client} (${e.command} ${e.args.join(" ")}): ${tools} tools`)
+		}
+		return said.join("; ")
+	})
+}
 // With --newcomer-only too (a check by hand): this machine's installed tools, no setups.
 if (packed && !only) {
 	for (const d of ["board", "case", "firmware"]) await step(`setup ${d}`, () => setup(d))

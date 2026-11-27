@@ -11,7 +11,21 @@ Claude Code:
 claude mcp add bringup -- npx -y bringup-mcp
 ```
 
-Claude Desktop, Cursor and other clients take the same command in their MCP settings:
+Claude Desktop, Cursor, VS Code and Windsurf (from 0.2.4), one command writes it into that client's config (the
+servers already there are kept, the old file saved beside it as `.bak`; `--print` only shows it):
+
+```bash
+npx -y bringup-mcp add claude-desktop   # or: cursor, vscode, windsurf
+```
+
+Or by hand. Restart the app (VS Code: "MCP: List Servers") afterwards.
+
+| Client | Config file | Entry |
+|---|---|---|
+| Claude Desktop | macOS `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| VS Code | macOS `~/Library/Application Support/Code/User/mcp.json`, Windows `%APPDATA%\Code\User\mcp.json`, Linux `~/.config/Code/User/mcp.json` (or `code --add-mcp`) | `servers`, with `"type": "stdio"` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` |
 
 ```json
 {
@@ -20,6 +34,26 @@ Claude Desktop, Cursor and other clients take the same command in their MCP sett
   }
 }
 ```
+
+VS Code's `mcp.json`:
+
+```json
+{
+  "servers": {
+    "bringup": { "type": "stdio", "command": "npx", "args": ["-y", "bringup-mcp"] }
+  }
+}
+```
+
+On Windows, Claude Desktop, Cursor and Windsurf start it through `cmd` (they start programs without a shell, and npx is
+`npx.cmd` there): `"command": "cmd", "args": ["/c", "npx", "-y", "bringup-mcp"]`; `add` writes that for you.
+
+How these are checked: `add` for each client into a temp home, then the server started from each written entry exactly
+as the client starts it (command and args, no shell), answering the MCP handshake and listing its tools. Done by hand
+on Linux from the npm tarball (27 Nov 2026), and in the OS smoke test's packed job on Linux, macOS and Windows (the
+Windows `cmd /c` form included). VS Code's own `code --add-mcp` writes the same entry. Claude Code connected end to end
+(`claude mcp list`: Connected). The apps themselves (Claude Desktop, Cursor, Windsurf) weren't
+opened: their files and entries follow each app's documented format.
 
 Needs Node 22 or later (tested on 22 and 24; the full toolchain below needs Node 24). The first `npx` call downloads the
 package and its dependencies, about 183 MB in npm's cache, most of it the model SDKs Mozaik uses; on a clean Node 24
