@@ -13,6 +13,10 @@
 // "imu" (orientation from the gyro's heading, yaw rate from its change; no accelerations: the broadcaster's
 // covariance marks them unknown). A skid-steer robot's rear wheels (joints 3 and 4) report their side's front wheel.
 #include <arpa/inet.h>
+// pi without M_PI, which MinGW's strict mode doesn't define (OS smoke run 7, Windows).
+#ifndef BRINGUP_PI
+#define BRINGUP_PI 3.14159265358979323846
+#endif
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -228,7 +232,7 @@ class BringupSystem : public hardware_interface::SystemInterface {
         const double yaw = std::strtol(p + 2, &end, 10) / 1000.0;
         p = end;
         const double dt = have_heading_ ? (now - heading_at_) / 1000.0 : 0.0;
-        if (dt > 0) imu_[6] = std::remainder(yaw - yaw_, 2 * M_PI) / dt;
+        if (dt > 0) imu_[6] = std::remainder(yaw - yaw_, 2 * BRINGUP_PI) / dt;
         if (!have_heading_ || dt > 0) heading_at_ = now;
         yaw_ = yaw;
         have_heading_ = true;

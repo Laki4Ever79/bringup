@@ -1,5 +1,9 @@
 // Bringup firmware template. include/pins.h is generated from the design contract.
 #include <Arduino.h>
+// pi without M_PI, which MinGW's strict mode doesn't define (OS smoke run 7, Windows).
+#ifndef BRINGUP_PI
+#define BRINGUP_PI 3.14159265358979323846
+#endif
 #include <Wire.h>
 #include "pins.h"
 // The radio and how readings leave the device (contract field connectivity, codegen/firmware.ts connectivityHeader).
@@ -769,7 +773,7 @@ static float sampleLine(bool ledOn) {
 			haveRest = true;
 		}
 		float c = (a[0] * rest[0] + a[1] * rest[1] + a[2] * rest[2]) / mag;
-		tilt = acosf(fmaxf(-1.0f, fminf(1.0f, c))) * 180.0f / (float)M_PI;
+		tilt = acosf(fmaxf(-1.0f, fminf(1.0f, c))) * 180.0f / (float)BRINGUP_PI;
 		if (fabsf(mag - 1.0f) > SHAKE_G || fabsf(mag - lastMag) > SHAKE_G) shakeUntil = millis() + SHAKE_HOLD_MS;
 		lastMag = mag;
 	}

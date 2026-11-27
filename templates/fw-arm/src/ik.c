@@ -1,8 +1,12 @@
 // Inverse kinematics, mirrored from src/arm/kinematics.ts solve (the host test compares the two on random points).
 #include <math.h>
 #include "arm_logic.h"
+// pi without M_PI, which MinGW's strict mode doesn't define (OS smoke run 7, Windows).
+#ifndef BRINGUP_PI
+#define BRINGUP_PI 3.14159265358979323846
+#endif
 
-#define DEG (180.0 / M_PI)
+#define DEG (180.0 / BRINGUP_PI)
 
 static double clamp1(double v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
 

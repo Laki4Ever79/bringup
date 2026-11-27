@@ -8,6 +8,10 @@
 #include <math.h>
 #include <stdint.h>
 #include "rover.h"  // RoverOut
+// pi without M_PI, which MinGW's strict mode doesn't define (OS smoke run 7, Windows).
+#ifndef BRINGUP_PI
+#define BRINGUP_PI 3.14159265358979323846
+#endif
 
 struct RoverOdo {
 	float x = 0, y = 0, th = 0;
@@ -19,8 +23,8 @@ struct RoverOdo {
 };
 
 static inline float rover_wrap(float a) {
-	while (a > (float)M_PI) a -= 2 * (float)M_PI;
-	while (a < -(float)M_PI) a += 2 * (float)M_PI;
+	while (a > (float)BRINGUP_PI) a -= 2 * (float)BRINGUP_PI;
+	while (a < -(float)BRINGUP_PI) a += 2 * (float)BRINGUP_PI;
 	return a;
 }
 
@@ -139,7 +143,7 @@ inline RoverOut rover_goto_step(RoverGoto &g, const RoverOdo &o, float cruise, f
 			const float dist = rover_goto_remaining(g, o);
 			const float err = rover_wrap(atan2f(g.ty - o.y, g.tx - o.x) - o.th);
 			// There, out of corrections, or past it: done where it stands.
-			if (dist < ROVER_GOTO_TOL_MM || ++g.tries > GOTO_TRIES || fabsf(err) > (float)M_PI / 2) {
+			if (dist < ROVER_GOTO_TOL_MM || ++g.tries > GOTO_TRIES || fabsf(err) > (float)BRINGUP_PI / 2) {
 				g.active = false;
 				g.done = true;
 				return RoverOut{0, 0};
@@ -162,7 +166,7 @@ inline RoverOut rover_goto_step(RoverGoto &g, const RoverOdo &o, float cruise, f
 	const float stopMm = g.facing && g.coastMm > 0 ? g.coastMm + 0.5f * ROVER_GOTO_TOL_MM : ROVER_GOTO_TOL_MM;
 	const float stopRad = GOTO_FACE_RAD;
 	// Arrived (with a learned coast: where rolling on ends it in the tolerance's middle, not at its edge), or passed it (it is behind, close): stop, then check from rest.
-	if (dist < stopMm || (g.facing && dist < 2 * ROVER_GOTO_TOL_MM && fabsf(err) > (float)M_PI / 2)) {
+	if (dist < stopMm || (g.facing && dist < 2 * ROVER_GOTO_TOL_MM && fabsf(err) > (float)BRINGUP_PI / 2)) {
 		g.settle = 2;
 		g.stopX = o.x;
 		g.stopY = o.y;
@@ -214,7 +218,7 @@ inline void rover_cal_start(RoverCal &c, int quarters, const RoverOdo &o) {
 	c.phase = 1;
 	c.quarters = c.left = quarters;
 	c.start = o.turned;
-	c.goal = o.turned + (float)M_PI / 2;
+	c.goal = o.turned + (float)BRINGUP_PI / 2;
 }
 
 static const float CAL_STRAIGHT_MM = 200.0f;
@@ -254,13 +258,13 @@ inline bool rover_cal_step(RoverCal &c, const RoverOdo &o, float cruise, float m
 		c.settling = false;
 		c.still = 0;
 		if (--c.left > 0) {
-			c.goal += dir * (float)M_PI / 2;
+			c.goal += dir * (float)BRINGUP_PI / 2;
 		} else if (c.phase == 1) {
 			c.ccw = o.turned - c.start;
 			c.phase = 2;
 			c.left = c.quarters;
 			c.start = o.turned;
-			c.goal = o.turned - (float)M_PI / 2;
+			c.goal = o.turned - (float)BRINGUP_PI / 2;
 		} else {
 			c.cw = c.start - o.turned;
 			// Then a straight stop as the go-to makes one (slowing to minDuty, the motors cut at the point): how far it

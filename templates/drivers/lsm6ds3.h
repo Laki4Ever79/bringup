@@ -11,6 +11,10 @@
 #include <Wire.h>
 #include <stdint.h>
 #include <math.h>
+// pi without M_PI, which MinGW's strict mode doesn't define (OS smoke run 7, Windows).
+#ifndef BRINGUP_PI
+#define BRINGUP_PI 3.14159265358979323846
+#endif
 
 static const uint8_t LSM6_ADDR = 0x6A;
 static const uint8_t LSM6_WHO_AM_I = 0x0F, LSM6_WHO = 0x6A;
@@ -62,7 +66,7 @@ struct GyroHeading {
 static inline void gyroHeadingStep(GyroHeading &h, float dps, uint32_t nowUs) {
 	if (h.started) {
 		const float dt = (float)(uint32_t)(nowUs - h.lastUs) * 1e-6f;
-		h.rad += (dps - h.biasDps) * (float)M_PI / 180.0f * dt;
+		h.rad += (dps - h.biasDps) * (float)BRINGUP_PI / 180.0f * dt;
 	}
 	h.started = true;
 	h.lastUs = nowUs;

@@ -4,6 +4,10 @@
 #include "../../src/rover_enc.h"
 #include "../../src/rover_quad.h"
 #include "../../src/rover_odo.h"
+// pi without M_PI, which MinGW's strict mode doesn't define (OS smoke run 7, Windows).
+#ifndef BRINGUP_PI
+#define BRINGUP_PI 3.14159265358979323846
+#endif
 
 static const RoverConfig CFG = {200, 500, 0.6f, 600};
 
@@ -206,16 +210,16 @@ void test_without_a_heading_the_turn_ends_on_the_counts(void) {
 // still reads the full quarter turn; without one, the wheels' difference.
 void test_with_a_gyro_the_odometry_turns_by_the_heading(void) {
 	const float mm = 0.1f, track = 200.0f;
-	const int32_t arc = (int32_t)(0.8f * (float)M_PI / 2 * track / 2 / mm);  // each wheel's counts for 80 % of a quarter turn
+	const int32_t arc = (int32_t)(0.8f * (float)BRINGUP_PI / 2 * track / 2 / mm);  // each wheel's counts for 80 % of a quarter turn
 	RoverOdo g, e;
 	rover_odo_step(g, 0, 0, mm, track, 0.0f);
 	rover_odo_step(e, 0, 0, mm, track);
-	rover_odo_step(g, -arc, arc, mm, track, (float)M_PI / 2);
+	rover_odo_step(g, -arc, arc, mm, track, (float)BRINGUP_PI / 2);
 	rover_odo_step(e, -arc, arc, mm, track);
-	TEST_ASSERT_FLOAT_WITHIN(1e-4f, (float)M_PI / 2, g.th);
-	TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.8f * (float)M_PI / 2, e.th);
+	TEST_ASSERT_FLOAT_WITHIN(1e-4f, (float)BRINGUP_PI / 2, g.th);
+	TEST_ASSERT_FLOAT_WITHIN(1e-3f, 0.8f * (float)BRINGUP_PI / 2, e.th);
 	// Straight after it: the distance from the wheels, along the gyro's heading.
-	rover_odo_step(g, -arc + 1000, arc + 1000, mm, track, (float)M_PI / 2);
+	rover_odo_step(g, -arc + 1000, arc + 1000, mm, track, (float)BRINGUP_PI / 2);
 	TEST_ASSERT_FLOAT_WITHIN(1e-2f, 100.0f, g.y);
 	TEST_ASSERT_FLOAT_WITHIN(1e-2f, 0.0f, g.x);
 }

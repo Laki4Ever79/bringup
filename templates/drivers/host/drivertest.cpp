@@ -13,6 +13,10 @@
 #include "drivers/drv8833.h"
 #include "drivers/vl53l0x.h"
 #include "drivers/lsm6ds3.h"
+// pi without M_PI, which MinGW's strict mode doesn't define (OS smoke run 7, Windows).
+#ifndef BRINGUP_PI
+#define BRINGUP_PI 3.14159265358979323846
+#endif
 
 static int failures = 0;
 static std::string why;
@@ -256,7 +260,7 @@ static bool lsmYaw() {
 static bool lsmHeading() {
 	GyroHeading h;
 	for (uint32_t t = 0; t <= 1000000; t += 10000) gyroHeadingStep(h, 90.0f, t);
-	EXPECT(near(h.rad, (float)M_PI / 2, 0.001f), "90 dps for 1 s came to %.4f rad, pi/2 is 1.5708", h.rad);
+	EXPECT(near(h.rad, (float)BRINGUP_PI / 2, 0.001f), "90 dps for 1 s came to %.4f rad, pi/2 is 1.5708", h.rad);
 	GyroHeading still;
 	still.biasDps = 0.5f;
 	for (uint32_t t = 0; t <= 10000000; t += 10000) gyroHeadingStep(still, 0.5f, t);
