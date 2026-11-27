@@ -11,6 +11,10 @@ import { ASSEMBLY_STEPS } from "../geometry/assembly-steps.js"
 
 const exec = promisify(execFile)
 
+// The PNGs stills.py printed, one per line. Python on Windows ends its lines with \r\n: split on \n alone, every name
+// kept its \r, none ended in .png, and the pictures were drawn but never listed (OS smoke test, Windows, 27 Nov 2026).
+export const pngLines = (stdout: string): string[] => stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => f.endsWith(".png")).map((f) => `assembly/${f}`)
+
 export interface AssemblyPictures {
 	files: string[]
 	note: string | null
@@ -21,7 +25,7 @@ export async function assemblyPictures(python: string, root: string, chassisDir:
 	const dir = join(outDir, "assembly")
 	try {
 		const { stdout } = await exec(python, [join(root, "py", "stills.py"), chassisDir, dir, ASSEMBLY_STEPS.join(",")], { timeout: 600_000 })
-		const files = stdout.split("\n").filter((f) => f.endsWith(".png")).map((f) => `assembly/${f}`)
+		const files = pngLines(stdout)
 		log(`assembly pictures: ${files.length} in ${dir}`)
 		return { files, note: null }
 	} catch (e) {
@@ -36,7 +40,7 @@ export async function armPictures(python: string, root: string, posedDir: string
 	const dir = join(outDir, "assembly")
 	try {
 		const { stdout } = await exec(python, [join(root, "py", "stills.py"), "--groups", posedDir, dir], { timeout: 600_000 })
-		const files = stdout.split("\n").filter((f) => f.endsWith(".png")).map((f) => `assembly/${f}`)
+		const files = pngLines(stdout)
 		log(`assembly pictures: ${files.length} in ${dir}`)
 		return { files, note: null }
 	} catch (e) {
@@ -52,7 +56,7 @@ export async function casePictures(python: string, root: string, enclosureDir: s
 	const dir = join(outDir, "assembly")
 	try {
 		const { stdout } = await exec(python, [join(root, "py", "stills.py"), "--case", enclosureDir, dir], { timeout: 600_000 })
-		const files = stdout.split("\n").filter((f) => f.endsWith(".png")).map((f) => `assembly/${f}`)
+		const files = pngLines(stdout)
 		log(`case pictures: ${files.length} in ${dir}`)
 		return { files, note: null }
 	} catch (e) {

@@ -41,3 +41,9 @@ test("a board in its built case gets pictures: the open case, the board in it, t
 	// No case built: says so instead of failing.
 	assert.match((await casePictures(python!, root, tempDir(), out)).note ?? "", /no built case/)
 })
+
+test("stills.py's printed names are read the same from Windows' \\r\\n lines", async () => {
+	const { pngLines } = await import("../src/package/assembly-pictures.ts")
+	assert.deepEqual(pngLines("step-1-case.png\r\nexploded.png\r\n"), ["assembly/step-1-case.png", "assembly/exploded.png"])
+	assert.deepEqual(pngLines("step-1-case.png\nexploded.png\n"), ["assembly/step-1-case.png", "assembly/exploded.png"])
+})

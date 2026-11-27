@@ -78,7 +78,8 @@ export async function runDriverTests(fwDir: string, s: ContractSnapshot, opts: {
 			return { ...base, ok: false, failed: [{ name: "host build", message: `the drivers don't compile on the host (${cxx})${errors.length ? `: ${errors.join(" / ")}` : ""}` }], log: build.output.trim().split("\n").slice(-30).join("\n") }
 		}
 		const r = await run(exe, [])
-		const lines = r.output.split("\n")
+		// \r\n from a Windows test program: without the split on it, every name and message kept a trailing \r.
+		const lines = r.output.split(/\r?\n/)
 		const passed = lines.filter((l) => l.startsWith("PASS ")).map((l) => l.slice(5))
 		const failed = lines.filter((l) => l.startsWith("FAIL ")).map((l) => {
 			const rest = l.slice(5)
