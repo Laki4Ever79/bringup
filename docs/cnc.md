@@ -256,3 +256,17 @@ Each failure on the way, with its general fix.
   (cnc/wiring-auto.ts withCncPlugs, then the wiring), and the three chips nothing asked for are named by role and part
   (cnc/checks.ts). The mock now writes no plugs. `--no-hardware` mocks of both briefs: settled rev 12, 0 violations,
   all eleven plugs from code (413 s and 469 s).
+- 27 Nov, real run 1 (out/real-runs/cc-cnc-1, the user's yes: briefs/cnc.md on the Claude subscription, --no-hardware,
+  plan rp-d26a63259ed3): UNSETTLED at revision 26, 4 violations, 33 min, 10.06 M input tokens (5.04 M cache reads),
+  0.31 M output, $0 (API-equivalent $6.20). The agents chose the ESP32-WROOM-32E and FluidNC, one Y motor. It ran on
+  a35e1cf2, which had lost the gap-2 work by accident (restored in 839b50bc), so there were no auto plugs or wiring.
+  Lessons → fixes:
+  - the firmware's signal list was the scripted gantry's (Y1/Y2): it now comes from the machine's motors
+    (signals.ts cncSignals), and the grblHAL map's M3 and the sim's moves follow;
+  - cnc-parts rewrote cnc 5 times guessing screw and rail names: the message lists the catalog's names;
+  - track-width-narrow on VMOT/VMOT_SW: the architect rated VMOT 10 A on the 6.67 A brick, so a cnc-supply check flags
+    a motor rail rated past cnc.input;
+  - TX straight onto PDN_UART with no resistor (seen in the replay): flagged, with the 1 kΩ named;
+  - the CNC's signal names are now in the parts prompt.
+  Replaying the final contract: 1 of 4 gone, 3 with exact fixes, 6 missing plugs added by code, TX caught.
+  `--no-hardware` mock: settled rev 12, 0 violations, 359 s.

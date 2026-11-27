@@ -16,6 +16,7 @@ import type { ContractSnapshot } from "../contract/types.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { grblhalSettings } from "../cnc/grblhal.ts"
 import { stallParams } from "../cnc/stall.ts"
+import { motorLabels } from "../cnc/signals.ts"
 import { defaultCheckCatalog } from "../mechanics/checks.ts"
 import { buildGrblhal, grblhalReady } from "./grblhal-build.ts"
 
@@ -48,12 +49,13 @@ const pp = (s: ContractSnapshot, signal: string): { port: string; pin: number } 
 // counts (a motor current over the stall trip at half duty, through the INA180's gain and shunt).
 export const MOVE_MM = { x: 2, y: 1, z: 0.5 }
 export function cncSimPlan(s: ContractSnapshot, stepsPerMm: number[], stall: { thresholdA: number; gainVV: number; shuntOhm: number } | null): CncSimPlan {
-	const motors = [
-		["X", "X_STEP", MOVE_MM.x * stepsPerMm[0]],
-		["Y", "Y1_STEP", MOVE_MM.y * stepsPerMm[1]],
-		["Y2 (M3)", "Y2_STEP", MOVE_MM.y * stepsPerMm[1]],
-		["Z", "Z_STEP", MOVE_MM.z * stepsPerMm[2]],
-	].flatMap(([name, sig, steps]) => {
+	// Each motor of the machine (X, Y or Y1 and Y2, Z): a ganged axis's second motor is grblHAL's M3.
+	const motors = (s.values.cnc ? motorLabels(s.values.cnc) : ["X", "Y1", "Y2", "Z"])
+		.map((l) => {
+			const axis = l[0].toLowerCase() as "x" | "y" | "z"
+			return [/^[XYZ]2$/.test(l) ? `${l} (M3)` : l[0], `${l}_STEP`, MOVE_MM[axis] * stepsPerMm["xyz".indexOf(axis)]]
+		})
+		.flatMap(([name, sig, steps]) => {
 		const p = pp(s, sig as string)
 		return p ? [{ name: name as string, ...p, steps: Math.round(steps as number) }] : []
 	})

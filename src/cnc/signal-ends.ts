@@ -10,19 +10,13 @@
 //   - <MOTOR>_STEP and _DIR on that motor's driver (the drivers in the parts' order drive the motors in axis order, a
 //     gantry's two in turn: board.ts cncMotors), STEPPERS_EN on the enable gate's B.
 import type { ContractValues, Part } from "../contract/types.ts"
-import { CNC_AXES } from "./types.ts"
+import { motorLabels } from "./signals.ts"
+export { motorLabels }
 
 // The drivers' single-wire UART takes TX through 1 kΩ (TMC2209 datasheet §4.4: the MCU's TX joins RX through a resistor).
 export const TX_RESISTOR = { mpn: "0402WGF1001TCE", lcsc: "C11702", footprint: "0402" }
 
 export type SignalEnd = { ref: string; pin: string } | { add: string }
-
-// The motors' labels in the drivers' order (board.ts cncMotors' labels; that module reaches codegen, so not imported).
-export const motorLabels = (cnc: ContractValues["cnc"]) =>
-	CNC_AXES.flatMap((name) => {
-		const a = cnc?.axes.find((x) => x.name === name)
-		return a ? Array.from({ length: a.motors }, (_, k) => `${name.toUpperCase()}${a.motors > 1 ? k + 1 : ""}`) : []
-	})
 
 export function cncSignalEnd(signal: string, parts: Part[], cnc?: ContractValues["cnc"]): SignalEnd | null {
 	const role = (r: string) => parts.filter((p) => p.role === r)

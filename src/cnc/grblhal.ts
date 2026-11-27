@@ -12,7 +12,7 @@ import { ACCEL_MM_S2 } from "./checks.ts"
 // The signals the map needs (signals.ts: imported, not declared here, so the checks -> fluidnc -> grblhal import cycle
 // never reads it before it is set).
 export { CNC_SIGNALS as GRBLHAL_SIGNALS } from "./signals.ts"
-import { CNC_SIGNALS as GRBLHAL_SIGNALS } from "./signals.ts"
+import { cncSignals, motorLabels } from "./signals.ts"
 // The spindle's PWM frequency, Hz: an ESTIMATE for a brushed 775 motor through a MOSFET (no maker states one).
 export const SPINDLE_PWM_HZ = 1000
 
@@ -28,7 +28,7 @@ export function grblhalPins(s: ContractSnapshot): { found: Map<string, [string, 
 		const pp = portPin(mcuPinName(parts, p.gpio))
 		if (pp) found.set(p.signal, pp)
 	}
-	return { found, missing: GRBLHAL_SIGNALS.filter((x) => !found.has(x)) }
+	return { found, missing: cncSignals(s.values.cnc).filter((x) => !found.has(x)) }
 }
 
 // Spare GPIOs for grblHAL's spindle enable, in order (UFQFPN48 names; not USB's PA11/PA12, SWD's PA13/PA14 or BOOT1 PB2).
@@ -43,6 +43,10 @@ export function grblhalMap(s: ContractSnapshot): string {
 		const pp = found.get(signal)
 		return pp ? [`#define ${name}_PORT ${pp[0]}`, `#define ${name}_PIN ${pp[1]}`] : [`// ${name}: no ${signal} in the contract's pins`]
 	}
+	// Each axis's (first) motor by the machine's labels (X, Y or Y1, Z), and a ganged axis's second motor as M3.
+	const labels = motorLabels(s.values.cnc)
+	const axisMotor = (axis: string) => labels.find((l) => l === axis || l === `${axis}1`) ?? axis
+	const ganged = s.values.cnc ? labels.find((l) => /^[XYZ]2$/.test(l)) : "Y2"
 	const def = (macro: string, signal: string) => {
 		const pp = found.get(signal)
 		return pp ? [`#define ${macro}_PORT ${pp[0]}`, `#define ${macro}_PIN ${pp[1]}`] : [`// ${macro}: no ${signal} in the contract's pins`]
@@ -54,16 +58,21 @@ export function grblhalMap(s: ContractSnapshot): string {
 		"",
 		'#define BOARD_NAME "Bringup CNC"',
 		"",
-		...def("X_STEP", "X_STEP"), ...def("Y_STEP", "Y1_STEP"), ...def("Z_STEP", "Z_STEP"),
+		...def("X_STEP", `${axisMotor("X")}_STEP`), ...def("Y_STEP", `${axisMotor("Y")}_STEP`), ...def("Z_STEP", `${axisMotor("Z")}_STEP`),
 		"#define STEP_OUTMODE GPIO_BITBAND",
-		...def("X_DIRECTION", "X_DIR"), ...def("Y_DIRECTION", "Y1_DIR"), ...def("Z_DIRECTION", "Z_DIR"),
+		...def("X_DIRECTION", `${axisMotor("X")}_DIR`), ...def("Y_DIRECTION", `${axisMotor("Y")}_DIR`), ...def("Z_DIRECTION", `${axisMotor("Z")}_DIR`),
 		"#define DIRECTION_OUTMODE GPIO_BITBAND",
 		"",
-		"// The gantry's second Y motor (the drivers' fourth, UART address 3 = its motor index).",
-		"#if N_ABC_MOTORS > 0",
-		"#define M3_AVAILABLE",
-		...def("M3_STEP", "Y2_STEP"), ...def("M3_DIRECTION", "Y2_DIR"),
-		"#endif",
+		...(ganged
+			? [
+					`// The gantry's second ${ganged[0]} motor (the drivers' fourth, UART address 3 = its motor index).`,
+					"#if N_ABC_MOTORS > 0",
+					"#define M3_AVAILABLE",
+					...def("M3_STEP", `${ganged}_STEP`),
+					...def("M3_DIRECTION", `${ganged}_DIR`),
+					"#endif",
+				]
+			: ["// No ganged axis: no M3."]),
 		"",
 		"// One enable for every driver: the MCU's STEPPERS_EN into the e-stop's OR gate, whose output is every TMC2209's ENN.",
 		...def("STEPPERS_ENABLE", "STEPPERS_EN"),

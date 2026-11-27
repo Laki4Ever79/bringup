@@ -13,7 +13,7 @@ import type { MechCatalog } from "../mechanics/catalog.ts"
 import { mcuPinName } from "../mcu/pins.ts"
 import { profileForPart } from "../mcu/profile.ts"
 import { SPINDLE_PWM_HZ, grblhalSettings } from "./grblhal.ts"
-import { CNC_SIGNALS } from "./signals.ts"
+import { CNC_SIGNALS, cncSignals } from "./signals.ts"
 import { cncMotors, senseResistor } from "./board.ts"
 
 // The same signals as grblHAL's map (the scripted design's names).
@@ -30,7 +30,7 @@ export function fluidncPins(s: ContractSnapshot): { found: Map<string, number>; 
 		const m = /^GPIO(\d+)$/.exec(mcuPinName(parts, p.gpio))
 		if (m) found.set(p.signal, Number(m[1]))
 	}
-	return { found, missing: FLUIDNC_SIGNALS.filter((x) => !found.has(x)) }
+	return { found, missing: cncSignals(s.values.cnc).filter((x) => !found.has(x)) }
 }
 
 // Pins FluidNC can't use as the map puts them, on the classic ESP32 (ESP32 datasheet; WROOM-32E datasheet Table 3):
@@ -42,7 +42,7 @@ export function fluidncPinProblems(s: ContractSnapshot): string[] {
 	const straps = new Set((prof?.pins ?? []).filter((p) => p.reserved === "strap").map((p) => p.index))
 	const out: string[] = []
 	for (const [signal, gpio] of fluidncPins(s).found) {
-		if (!(FLUIDNC_SIGNALS as readonly string[]).includes(signal)) continue
+		if (!cncSignals(s.values.cnc).includes(signal)) continue
 		if (gpio >= 34 && gpio <= 39 && !INPUTS.has(signal)) out.push(`${signal} is an output on GPIO${gpio}, which is input only`)
 		else if (gpio >= 34 && gpio <= 39 && PULLED_UP.has(signal)) out.push(`${signal} needs the MCU's pull-up, which GPIO${gpio} doesn't have`)
 		if (straps.has(gpio)) out.push(`${signal} is on GPIO${gpio}, a strapping pin: its level at reset sets the boot mode`)

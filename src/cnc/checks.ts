@@ -5,7 +5,8 @@ import { CNC_AXES, type CncAxis } from "./types.ts"
 import { estopChecks, spindleSenseChecks } from "./estop.ts"
 import { grblhalPins } from "./grblhal.ts"
 import { fluidncPinProblems, fluidncPins } from "./fluidnc.ts"
-import { signalEndsText } from "./signal-ends.ts"
+import { signalEndsText, TX_RESISTOR } from "./signal-ends.ts"
+const TX_RESISTOR_TEXT = `a 1 kΩ resistor (${TX_RESISTOR.mpn}, LCSC ${TX_RESISTOR.lcsc}, ${TX_RESISTOR.footprint}, pins ["pin1", "pin2"], nets { "pin2": "@STEPPER_UART" })`
 
 // The stepper driver's continuous RMS current per coil: the board's stepper-driver part's, from catalog/parts.json (the
 // TMC2209-LA: 1.4 A, its datasheet's design guideline), or that chip's when the board has none yet.
@@ -90,6 +91,17 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 		if (missing.length) out.push({ kind: "cnc-wiring", message: `FluidNC's config.yaml needs a GPIO for ${signalEndsText(missing, values.parts, m)}: assign each signal by that name to a free MCU pin with that partRef and partPin`, fields: ["pins"], affects: ["architect"] })
 		for (const problem of fluidncPinProblems(snap)) out.push({ kind: "cnc-wiring", message: `${problem}: move it to another free GPIO (not 34-39 for an output or a switch, not a strapping pin)`, fields: ["pins"], affects: ["architect"] })
 	}
+	// The drivers' UART TX joins the line through its 1 kΩ (TMC2209 §4.4), never straight onto PDN_UART: TX and RX on one
+	// wire with no resistor fight each other when a driver answers (the first real CNC run, 27 Nov 2026: STEPPER_UART_TX
+	// and STEPPER_UART both on U5.PDN_UART).
+	const tx = pins.find((p) => p.signal === "STEPPER_UART_TX")
+	const txPart = tx && (values.parts ?? []).find((p) => p.ref === tx.partRef)
+	if (tx && txPart?.role === "stepper-driver") out.push({ kind: "cnc-wiring", message: `STEPPER_UART_TX goes straight onto ${tx.partRef}.${tx.partPin}, the drivers' single-wire line, so TX and RX fight on it: put ${TX_RESISTOR_TEXT} between them and end STEPPER_UART_TX on its pin1 (STEPPER_UART, the MCU's RX, stays on the line)`, fields: ["pins", "parts"], affects: ["architect"] })
+	// The motors' rail can't be rated past the brick that feeds it (cnc.input): the first real CNC run's architect assumed a
+	// 10 A brick (VMOT 10000 mA rated, 9300 mA peak) on the mechanics engineer's 6.67 A one, and the board's power copper
+	// was sized for 9.3 A it could never carry (track-width-narrow on VMOT and VMOT_SW to the end).
+	const motorRail = (values.rails ?? []).find((r) => Math.abs(r.voltageV - m.input.volts) < 0.5)
+	if (motorRail && motorRail.regulatorMaxMa > m.input.amps * 1000 + 1) out.push({ kind: "cnc-supply", message: `the ${motorRail.name} rail is rated ${motorRail.regulatorMaxMa} mA, but the ${m.input.volts} V brick in cnc.input gives ${Math.round(m.input.amps * 1000)} mA: rate it at the brick's ${Math.round(m.input.amps * 1000)} mA and size its loadMa from the machine (each driver's run current × the motors, plus the spindle's watts / volts), or ask the mechanics engineer for a larger brick`, fields: ["rails"], affects: ["architect"] })
 	// The motors' supply: a rail at the brick's volts for the drivers' VS (the TMC2209's 5.5–29 V).
 	if (values.rails && drivers && !values.rails.some((r) => Math.abs(r.voltageV - m.input.volts) < 0.5)) out.push({ kind: "cnc-wiring", message: `the board has no ${m.input.volts} V rail for the stepper drivers' motor supply (VS) from the ${m.input.volts} V brick: add it to rails (rails: ${values.rails.map((r) => `${r.name} ${r.voltageV} V`).join(", ")})`, fields: ["rails"], affects: ["architect"] })
 	// The spindle runs on the supply's volts: one brick feeds motors and spindle.
@@ -118,11 +130,14 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	if (!(mech.powerBricks ?? []).some((b) => b.volts === m.input.volts && b.amps >= m.input.amps)) missing.push(`a ${m.input.volts} V brick of at least ${m.input.amps} A (powerBricks: ${(mech.powerBricks ?? []).map((b) => `${b.volts} V ${b.amps} A`).join(", ")})`)
 	for (const a of m.axes) {
 		if (!mech.steppers?.some((x) => x.mpn === a.motor)) missing.push(`the ${a.name.toUpperCase()} motor ${a.motor} (steppers: ${(mech.steppers ?? []).map((x) => x.mpn).join(", ")})`)
-		if (!(mech.driveTrain ?? []).some((x) => x.kind === "leadscrew" && x.mpn === a.screw)) missing.push(`the ${a.name.toUpperCase()} screw ${a.screw} (driveTrain lead screws)`)
-		if (!mech.rails?.some((x) => x.mpn === a.rail)) missing.push(`the ${a.name.toUpperCase()} rail ${a.rail} (rails)`)
+		// Each with the catalog's names, as the motor's and spindle's are: the first real CNC run (27 Nov 2026) rewrote cnc
+		// five times guessing "TR8x8", "TR8x8-leadscrew", "MGN12H-rail" from "(driveTrain lead screws)" alone, and fixed the
+		// spindle and motors, whose names the message listed, at the first try.
+		if (!(mech.driveTrain ?? []).some((x) => x.kind === "leadscrew" && x.mpn === a.screw)) missing.push(`the ${a.name.toUpperCase()} screw ${a.screw} (driveTrain lead screws: ${(mech.driveTrain ?? []).filter((x) => x.kind === "leadscrew").map((x) => `"${x.mpn}"`).join(", ")})`)
+		if (!mech.rails?.some((x) => x.mpn === a.rail)) missing.push(`the ${a.name.toUpperCase()} rail ${a.rail} (rails: ${(mech.rails ?? []).map((x) => `"${x.mpn}"`).join(", ")})`)
 	}
 	if (missing.length) {
-		push("cnc-parts", `not in catalog/mechanics.json: ${missing.join("; ")}`)
+		push("cnc-parts", `not in catalog/mechanics.json: ${missing.join("; ")}. Use a catalog name exactly as listed`)
 		return out
 	}
 	if (spindle!.volts !== m.spindle.volts) push("cnc-supply", `the spindle ${spindle!.mpn} runs on ${spindle!.volts} V, not the ${m.spindle.volts} V the design says`)
