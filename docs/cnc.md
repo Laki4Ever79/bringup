@@ -197,3 +197,14 @@ Each failure on the way, with its general fix.
   duty. The check (src/cnc/estop.ts spindleSenseChecks): a switched spindle with no current sense, a full scale under
   the brick's current, or its output on no pin, each reported. Open: grblHAL has no stall stop of its own; the plugin that
   reads SPINDLE_I is still to write.
+- 27 Nov 2026: the spindle's stall stop, its firmware. A grblHAL plugin, generated with the board's numbers
+  (src/cnc/stall.ts; the firmware folder's grblhal/bringup_stall.c and .h, copied into grblHAL's Src/): my_plugin_init
+  sets up ADC1 on SPINDLE_I's pin (PA5, channel 5) and chains grbl.on_execute_realtime; every millisecond it reads the
+  INA180, averages over 20 ms, divides by the PWM duty (from the spindle's own get_pwm and period) and, when the motor's
+  current stays over the trip for 300 ms, turns the spindle off (spindle_set_state) and raises grblHAL's spindle alarm
+  (Alarm_Spindle, 14). The trip, 6.0 A, is an ESTIMATE (no maker states a 775 spindle's stall current): twice its 3.1 A
+  run current, held under 0.9 of the brick's 6.67 A; under 10 % duty nothing is judged. The detector is a pure header,
+  compiled with the host's gcc in test/cnc-stall.test.ts: a run never trips, a stall and a stall at the brick's full
+  current trip at 300-400 ms, a 150 ms load step and a low-duty stall don't. Built into grblHAL (the plugin linked:
+  my_plugin_init, stall_poll in firmware.elf); the build environment now goes in grblHAL's platformio.local.ini (its
+  platformio.ini reads it, git ignores it), so grblHAL's own files stay as cloned.
