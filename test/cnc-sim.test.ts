@@ -23,7 +23,7 @@ test("the scenario's plan: every motor's steps for X2 Y1 Z-0.5 at 400 steps/mm, 
 	assert.equal(plan.stallCounts, 819)
 	assert.deepEqual(plan.estopPin, { port: "B", pin: 12 })
 	const script = cncSimScript({ repl: "/r.repl", elf: "/f.elf", uart: "/u.txt", settings: ["$22=1", "$100=400"], plan })
-	for (const x of ['logLevel 3', 'SetHookBeforePeripheralWrite sysbus.timer5', 'SetHookBeforePeripheralWrite sysbus.gpioPortA', 'SetHookBeforePeripheralWrite sysbus.gpioPortB', 'sysbus.usart1 WriteLine "$22=1"', `sysbus WriteDoubleWord 0x400123FC 819`, 'sysbus.gpioPortB OnGPIO 12 true'])
+	for (const x of ['logLevel 3', 'SetHookBeforePeripheralWrite sysbus.timer5', 'SetHookBeforePeripheralWrite sysbus.gpioPortA', 'SetHookBeforePeripheralWrite sysbus.gpioPortB', 'sysbus.usart1 WriteLine "$22=1"', `sysbus WriteDoubleWord 0x400123FC 819`, 'sysbus.gpioPortB OnGPIO 12 true', 'sysbus.exti OnGPIO 12 true', 'sysbus.gpioPortB OnGPIO 13 true', 'sysbus.exti OnGPIO 13 true'])
 		assert.ok(script.includes(x), x)
 	assert.ok(!script.includes("\\$"), "no shell-style escapes: Renode passes them through")
 })

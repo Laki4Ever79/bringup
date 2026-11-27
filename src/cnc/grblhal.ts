@@ -107,6 +107,14 @@ export function grblhalMap(s: ContractSnapshot): string {
 		"#define TRINAMIC_STREAM 0",
 		"#endif",
 		"",
+		"// Simulation build only (BRINGUP_SIM, the _sim environment): Renode 1.17 returns 0 for a byte read of the bit-band",
+		"// alias, and grblHAL reads its e-stop and limit pins that way (ldrb), so the simulated machine never saw them trip. Read",
+		"// the port's IDR instead: the same bit. The board's build keeps grblHAL's bit-band read (the real chip has no such bug).",
+		"#ifdef BRINGUP_SIM",
+		"#undef DIGITAL_IN",
+		"#define DIGITAL_IN(port, pin) ((((port)->IDR) >> (pin)) & 1u)",
+		"#endif",
+		"",
 	].join("\n")
 }
 
@@ -158,8 +166,8 @@ export function grblhalSettingsText(settings: { id: number; value: number; note:
 // The build flags of grblHAL's PlatformIO environment for this board (its [env:blackpill_f411ce] with the generated map).
 export const GRBLHAL_BUILD_FLAGS = ["-D BOARD_MY_MACHINE=", "-D USB_SERIAL_CDC=1", "-D TRINAMIC_ENABLE=2209", "-D TRINAMIC_UART_ENABLE=1", "-D ESTOP_ENABLE=1", "-D N_ABC_MOTORS=1", "-D Y_GANGED=1", "-D PROBE_ENABLE=0", "-D SPINDLE0_ENABLE=SPINDLE_PWM0_NODIR"]
 // The simulation's build (Renode, src/tools/cnc-sim.ts): no USB (Renode has none), so the console on USART1 (SERIAL_PORT 1,
-// PA9/PA10); no Trinamic (no TMC2209 model). Everything else as the board's.
-export const GRBLHAL_SIM_BUILD_FLAGS = GRBLHAL_BUILD_FLAGS.filter((f) => !/USB_SERIAL_CDC|TRINAMIC/.test(f)).concat("-D SERIAL_PORT=1")
+// PA9/PA10); no Trinamic (no TMC2209 model); BRINGUP_SIM for the map's bit-band workaround. Everything else as the board's.
+export const GRBLHAL_SIM_BUILD_FLAGS = GRBLHAL_BUILD_FLAGS.filter((f) => !/USB_SERIAL_CDC|TRINAMIC/.test(f)).concat("-D SERIAL_PORT=1", "-D BRINGUP_SIM=1")
 const envBlock = (name: string, flags: string[], upload = true) => [
 	`[env:${name}]`,
 	"board = blackpill_f411ce",

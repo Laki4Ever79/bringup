@@ -51,7 +51,7 @@ Needs Node 22 or later. Nothing else to install first.
 
    | Command | Size, once | Adds |
    |---|---|---|
-   | `npx -y bringup-mcp setup board` | ~923 MB, ~30 s | routed boards, fab files and their pictures |
+   | `npx -y bringup-mcp setup board` | ~923 MB, ~30 s | routed boards, fab files and their pictures; with Docker running, compact boards also get Freerouting (in a container), which routes them faster |
    | `npx -y bringup-mcp setup case` | ~945 MB, ~75 s | cases, robot chassis and printed parts (STEP, STL); needs the system's OpenGL library, `sudo apt install libgl1` on a minimal Linux |
    | `npx -y bringup-mcp setup firmware` | ~125 MB, then ~1 GB on the first firmware build | firmware compiled against the board's real pins |
    | ROS 2 (robots) | comes with `setup case` | a ROS 2 Jazzy workspace in the build package (URDF, ros2_control, Nav2, launch); build it with colcon on Ubuntu 24.04 with ROS 2 Jazzy: [docs/ros.md](docs/ros.md#from-npm-no-clone) |

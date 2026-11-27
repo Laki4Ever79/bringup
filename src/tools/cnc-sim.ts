@@ -6,9 +6,18 @@
 //   - no USB model: the simulation's console is USART1;
 //   - no TMC2209 model: the drivers' UART is off in this build;
 //   - Renode's TIM5 model doesn't reload a down-counter from ARR: a hook in our overlay does (src/tools/cnc-sim.ts);
-//   - no ADC model: a small Python one, its value set by the scenario.
+//   - no ADC model: a small Python one, its value set by the scenario;
+//   - its bit-band alias reads 0 for a byte read (grblHAL's pin reads): the simulation's build reads the IDR (BRINGUP_SIM);
+//   - GPIOB's pins 13-15 don't reach its EXTI: the scenario drives each input's EXTI line along with the pin.
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { spawnSync } from "node:child_process"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { mcuPinName } from "../mcu/pins.ts"
+import { grblhalSettings } from "../cnc/grblhal.ts"
+import { stallParams } from "../cnc/stall.ts"
+import { defaultCheckCatalog } from "../mechanics/checks.ts"
+import { buildGrblhal, grblhalReady } from "./grblhal-build.ts"
 
 export const CNC_SIM_LIMITS = [
 	"Renode's STM32F412 model stands in for the STM32F411 (Renode 1.17 has none): the same Cortex-M4F core, timers, GPIO and USARTs grblHAL uses",
@@ -16,6 +25,8 @@ export const CNC_SIM_LIMITS = [
 	"the TMC2209s aren't simulated: their current, microsteps and UART addresses come from the build, not from a model",
 	"Renode's TIM5 doesn't reload a down-counter from ARR; a hook in the simulation's overlay does it",
 	"the spindle's current is an injected ADC value, not a motor model",
+	"Renode's GPIOB pins 13-15 don't reach its EXTI, so the scenario drives each input's EXTI line along with the pin (the edge the pin makes on the chip)",
+	"Renode reads 0 for a byte read of the bit-band alias, so the simulation's build reads input pins from the port's IDR (BRINGUP_SIM); the board's build keeps grblHAL's bit-band read",
 ] as const
 
 export interface CncSimPlan {
@@ -94,7 +105,9 @@ export function cncSimScript(o: { repl: string; elf: string; uart: string; setti
 		return `sysbus SetHookBeforePeripheralWrite sysbus.gpioPort${port} "import __builtin__ as b; c = b.__dict__.setdefault('steps${port}', {}); n = value if offset == 0x14 else c.get('odr', 0); [c.__setitem__(k, c.get(k, 0) + 1) for k in ${JSON.stringify(bits)} if (n >> k) & 1 and not (c.get('odr', 0) >> k) & 1]; c['odr'] = n if offset == 0x14 else c.get('odr', 0)"`
 	}
 	const send = (line: string, s = "0.05") => [`sysbus.usart1 WriteLine "${line}"`, `emulation RunFor "${s}"`]
-	const pin = (p: { port: string; pin: number } | null, on: boolean) => (p ? [`sysbus.gpioPort${p.port} OnGPIO ${p.pin} ${on ? "true" : "false"}`] : [])
+	// The pin's level (what the firmware reads) and its EXTI line's edge: in Renode 1.17's STM32F4 model GPIOB's pins 13-15
+	// don't reach EXTI (their lines never latch; the EXTI itself does), so the script drives the line too, as the pin would.
+	const pin = (p: { port: string; pin: number } | null, on: boolean) => (p ? [`sysbus.gpioPort${p.port} OnGPIO ${p.pin} ${on ? "true" : "false"}`, `sysbus.exti OnGPIO ${p.pin} ${on ? "true" : "false"}`] : [])
 	return [
 		// Errors only: a scenario's peripheral warnings run to megabytes (the flash controller's, every settings write).
 		"logLevel 3",
@@ -158,4 +171,35 @@ export function judgeCncSim(uart: string, renodeOut: string, plan: CncSimPlan): 
 	checks.push({ name: "stall stop", ok: /ALARM:14/.test(uart), detail: /ALARM:14/.test(uart) ? "an injected stall current: spindle off, ALARM:14" : "no spindle alarm on an injected stall current" })
 	checks.push({ name: "hard limit", ok: /ALARM:1\b/.test(uart), detail: /ALARM:1\b/.test(uart) ? "X's limit tripped mid-move: ALARM:1" : "no hard-limit alarm" })
 	return { result: checks.every((c) => c.ok) ? "pass" : "fail", checks, knownLimits: CNC_SIM_LIMITS }
+}
+
+export const renodeDir = (root: string) => join(root, "tools/renode/renode_1.17.0-portable")
+export const cncSimReady = (root: string) => grblhalReady(root) && existsSync(join(renodeDir(root), "renode"))
+
+// The whole simulation: grblHAL's simulation build in its own copy, the scenario in Renode, the judgement. Its files
+// (the script, the overlay, the UART log, Renode's output, result.json) stay in dir.
+export function runCncSim(root: string, s: ContractSnapshot, dir: string): CncSimResult & { wallS: number } {
+	const t0 = Date.now()
+	const wallS = () => Math.round((Date.now() - t0) / 1000)
+	const cat = defaultCheckCatalog()
+	const settings = cat ? grblhalSettings(s, cat.mech) : null
+	if (!cat || !settings) throw new Error("the CNC simulation needs the machine's grblHAL settings (s.values.cnc and the check catalog)")
+	const spm = [100, 101, 102].map((id) => settings.find((x) => x.id === id)?.value ?? 0)
+	const plan = cncSimPlan(s, spm, stallParams(s, cat))
+	const fw = buildGrblhal({ root, dir, s, env: "bringup_cnc_sim" })
+	if (!fw.ok) {
+		const why = fw.out.split("\n").filter((l) => / error|FAILED/.test(l)).slice(0, 5).join("; ") || fw.out.slice(-400)
+		return { result: "fail", checks: [{ name: "simulation build", ok: false, detail: `grblHAL's simulation build failed: ${why}` }], knownLimits: CNC_SIM_LIMITS, wallS: wallS() }
+	}
+	writeFileSync(join(dir, "adc.py"), ADC_PY)
+	writeFileSync(join(dir, "cnc.repl"), cncSimRepl(join(dir, "adc.py")))
+	const uart = join(dir, "uart.txt")
+	writeFileSync(uart, "")
+	writeFileSync(join(dir, "scenario.resc"), cncSimScript({ repl: join(dir, "cnc.repl"), elf: fw.elf, uart, settings: settings.map((x) => `$${x.id}=${x.value}`), plan }))
+	const r = spawnSync("./renode", ["--disable-xwt", "--console", "-e", `include @${join(dir, "scenario.resc")}; quit`], { cwd: renodeDir(root), encoding: "utf8", timeout: 900_000, maxBuffer: 256 * 1024 * 1024 })
+	const out = `${r.stdout ?? ""}${r.stderr ?? ""}`
+	writeFileSync(join(dir, "renode.log"), out)
+	const res = { ...judgeCncSim(readFileSync(uart, "utf8"), out, plan), wallS: wallS() }
+	writeFileSync(join(dir, "result.json"), JSON.stringify(res, null, 1))
+	return res
 }
