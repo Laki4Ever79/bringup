@@ -10,6 +10,7 @@ import { compactOutline, ROUTING_FAILURE, SLACK_LIMIT, sizeReasonHolds } from ".
 import { state } from "../runtime.ts"
 import { loadCatalog } from "../tools/parts-search.ts"
 import type { Part } from "../contract/types.ts"
+import { isCncPlug } from "../cnc/wiring-auto.ts"
 import { parseSwap } from "../tools/sourcing.ts"
 import { armLinksForReach, armTargetsFromRequest, mechanicsFromRequest, partsAfterSwap } from "../runner/request-map.ts"
 import { parseMoves, type PartMove, type Release } from "../board-edit/board-move.ts"
@@ -243,9 +244,10 @@ export const CNC_FLUIDNC_DESIGN: typeof LOGGER_DESIGN = {
 	}),
 	parts: CNC_DESIGN.parts!.map((p) => (p.role === "mcu" ? catalogPart("ESP32-WROOM-32E", p.ref) : p)),
 }
-// The CNC's parts as an agent writes them: no nets but the MCU's. The contract tools wire the rest (cnc/wiring-auto.ts),
-// so the mock proves that code, not the hand-written nets CNC_DESIGN keeps as the tests' fixture (docs/cnc.md gap 2).
-const withoutCncWiring = (parts: Part[]) => parts.map((p) => (p.role === "mcu" || !p.nets ? p : (({ nets: _n, ...rest }) => rest as Part)(p)))
+// The CNC's parts as an agent writes them: no plugs, no nets but the MCU's. The contract tools add the plugs the machine
+// needs and wire the rest (cnc/wiring-auto.ts), so the mock proves that code, not the hand-written plugs and nets
+// CNC_DESIGN keeps as the tests' fixture (docs/cnc.md gap 2).
+const withoutCncWiring = (parts: Part[]) => parts.filter((p) => !isCncPlug(p)).map((p) => (p.role === "mcu" || !p.nets ? p : (({ nets: _n, ...rest }) => rest as Part)(p)))
 const isCnc = () => !!state().contract.get("cncTargets") || CNC_BRIEF.test(state().contract.get("requirements")?.summary ?? "")
 const isCncFluidnc = () => isCnc() && /\bESP32\b/.test(state().contract.get("requirements")?.summary ?? "")
 const isStm32 = () => /\bSTM32\b/.test(state().contract.get("requirements")?.summary ?? "")

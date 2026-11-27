@@ -4,7 +4,7 @@ import { withArmRails } from "../contract/arm-rails.ts"
 import { moveUpMcu } from "../contract/mcu-move.ts"
 import { withRobotImu } from "../contract/imu-auto.ts"
 import { withUsbBridge } from "../contract/usb-bridge-auto.ts"
-import { withCncWiring } from "../cnc/wiring-auto.ts"
+import { completeCncBoard } from "../cnc/wiring-auto.ts"
 import { withDriverOutputs } from "../contract/outputs-auto.ts"
 import { withStatusLed } from "../contract/status-led-auto.ts"
 import { FIELDS, OWNERS, type AgentRole, type ContractSnapshot, type ContractValues, type FieldName } from "../contract/types.ts"
@@ -97,10 +97,10 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 				// lands it complete (real run 19b spent 19 revisions on it by hand).
 				// A CNC (cncTargets): its logic's 5 V from the brick, the power tree decided in code as an arm's is (CNC gap 6).
 				if (args.field === "parts" && Array.isArray(args.value) && !s.contract.get("motion") && !s.contract.get("arm") && (s.contract.get("cncTargets") || s.contract.get("cnc"))) {
-					// Its fixed wiring too (cnc/wiring-auto.ts: the jack, the motor plugs, the spindle's switch and terminal, the
+					// Its plugs and fixed wiring too (cnc/wiring-auto.ts: the plugs the machine needs, then the jack, the motor plugs, the spindle's switch and terminal, the
 					// e-stop's loop, the UART's TX resistor), so the agent writes parts and pins, not the nets every CNC shares.
 					// First: the power tree finds the brick by the jack's VIN net.
-					const w = withCncWiring(args.value as NonNullable<ContractValues["parts"]>, s.contract.snapshot())
+					const w = completeCncBoard(args.value as NonNullable<ContractValues["parts"]>, s.contract.snapshot(), mcuCatalog())
 					if (w.note) {
 						args = { ...args, value: w.parts as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, w.note].filter(Boolean).join("; ")
@@ -297,7 +297,7 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					// motor plugs cnc's motors, the TX resistor the pins), so it follows their writes as well,
 					// before the power tree, which finds the brick by the jack's VIN net.
 					if ((args.field === "cncTargets" || args.field === "cnc" || args.field === "rails" || args.field === "pins") && s.contract.get("parts") && !s.contract.get("motion") && !s.contract.get("arm") && (s.contract.get("cncTargets") || s.contract.get("cnc"))) {
-						const w = withCncWiring(s.contract.get("parts")!, s.contract.snapshot())
+						const w = completeCncBoard(s.contract.get("parts")!, s.contract.snapshot(), mcuCatalog())
 						if (w.note && follow("parts", w.parts, w.note)) laidOutNote = [laidOutNote, w.note].filter(Boolean).join("; ")
 					}
 					// A CNC's power tree (the brick's 5 V step-down and the OR-ing diodes) also on the write that makes it a CNC or

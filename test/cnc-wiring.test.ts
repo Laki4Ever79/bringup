@@ -3,7 +3,11 @@
 import { afterEach, test } from "node:test"
 import assert from "node:assert/strict"
 import { CNC_DESIGN, CNC_MACHINE, CNC_TARGETS } from "../src/inference/scripts.ts"
-import { withCncWiring } from "../src/cnc/wiring-auto.ts"
+import { completeCncBoard, withCncPlugs, withCncWiring } from "../src/cnc/wiring-auto.ts"
+import { loadCatalog } from "../src/tools/parts-search.ts"
+import { cncChecks } from "../src/cnc/checks.ts"
+import { defaultCheckCatalog } from "../src/mechanics/checks.ts"
+import { resolve } from "node:path"
 import { completePowerTree } from "../src/contract/power-auto.ts"
 import { generatedNets } from "../src/codegen/circuit.ts"
 import { OWNERS, type ContractSnapshot, type FieldName, type Part } from "../src/contract/types.ts"
@@ -69,4 +73,25 @@ test("through the contract tools: bare parts first, the mechanics engineer's cnc
 	// 27 Nov 2026: the tree ran on a bare jack, and U8.VCC had no 5 V).
 	await waitFor(() => state.contract.get("parts")!.some((p) => p.role === "buck"))
 	assert.deepEqual(state.contract.get("parts")!.filter((p) => ["buck", "diode"].includes(p.role ?? "")).map((p) => p.role).sort(), ["buck", "diode", "diode"])
+})
+
+const catalog = loadCatalog(resolve(import.meta.dirname, "..")) as never
+const PLUG = /^(J[23]|JX\d|JL\d|JE1)$/
+test("no plugs at all: the machine's jack, four motor plugs, spindle terminal, e-stop plug and three limit plugs come from code, and the board is the hand-wired one", () => {
+	const none = bare.filter((p) => !PLUG.test(p.ref))
+	assert.equal(none.length, bare.length - 10)
+	const c = completeCncBoard(none, cnc(none), catalog)
+	assert.match(c.note!, /added J2 DC-091-A250, JX1 B4B-XH-A\(LF\)\(SN\), JX2 .*JX4 .*J3 KF128R-5.08-2P, JE1 B2B-XH-A-R\(LF\)\(SN\), JL1 S2B-XH-A\(LF\)\(SN\), JL2 .*JL3 /)
+	assert.deepEqual(sorted(generatedNets(cnc(c.parts))), sorted(generatedNets(cnc(CNC_DESIGN.parts!))))
+	// The agent's own plugs count: the full scripted list gets nothing added.
+	assert.equal(withCncPlugs(CNC_DESIGN.parts!, cnc(CNC_DESIGN.parts!), catalog).note, null)
+})
+
+test("the chips nothing else asked for: a CNC without its spindle gate driver, its MOSFET or the drivers' enable gate is told which to add", () => {
+	const cat = defaultCheckCatalog()!
+	const msgs = (drop: string) => cncChecks({ ...CNC_DESIGN, parts: CNC_DESIGN.parts!.filter((p) => p.ref !== drop), cnc: CNC_MACHINE, cncTargets: CNC_TARGETS }, cat).map((x) => x.message)
+	assert.deepEqual(cncChecks({ ...CNC_DESIGN, cnc: CNC_MACHINE, cncTargets: CNC_TARGETS }, cat).filter((x) => /the CNC's board is missing/.test(x.message)), [])
+	assert.ok(msgs("U8").some((m) => /is missing the spindle's gate driver \(role spindle-driver, SN74AHCT1G125DBVR/.test(m)))
+	assert.ok(msgs("Q1").some((m) => /\(role mosfet, AO4468/.test(m)))
+	assert.ok(msgs("U9").some((m) => /\(role enable-gate, SN74LVC1G32DBVR/.test(m)))
 })
