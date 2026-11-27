@@ -64,7 +64,13 @@ test("the board rebuilds when mechanics writes cnc: the drivers' context (motor 
 	// The plain layout, or else the one with pin parts beside their own pins (pinPads, tried after it: the spindle
 	// driver's SOT-23-5 decoupling, board.ts).
 	const far = unreachableCaps(s)
-	assert.deepEqual(far.length ? unreachableCaps(s, { pinPads: true }) : far, [])
+	const best = far.length ? unreachableCaps(s, { pinPads: true }) : far
+	// Every capacitor's pin ends in reach. Its GND ends are measured too since 27 Nov 2026 (tscircuit bounds them to the
+	// nearest GND pad: the CNC's every 2-layer layout was refused on one); the spindle buffer's SOT-23-5 decoupling
+	// (VCC and GND on opposite sides) is the one still out, so this board goes to Freerouting at once instead of through
+	// tscircuit layouts that can't pass. Placing it for both ends is open (handoff).
+	assert.deepEqual(best.filter((m) => !/to net\.GND/.test(m)), [])
+	assert.deepEqual(best.map((m) => /\.(C\d+) > \.pin2 to net\.GND/.exec(m)?.[1]), ["C36"])
 })
 
 test("a CNC's logic runs from its brick: a 5 V step-down on the motor rail, OR'd with USB, feeding the LDO (gap 6)", async () => {

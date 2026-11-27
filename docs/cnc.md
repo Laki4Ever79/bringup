@@ -270,3 +270,9 @@ Each failure on the way, with its general fix.
   - the CNC's signal names are now in the parts prompt.
   Replaying the final contract: 1 of 4 gone, 3 with exact fixes, 6 missing plugs added by code, TX caught.
   `--no-hardware` mock: settled rev 12, 0 violations, 359 s.
+- 27 Nov, the full mock of briefs/cnc.md with every build (adopt 5c26ea71, the default time limit): SETTLED at
+  revision 12, 0 violations, 23.6 min. The board was built at revisions 11 and 12 on 4 layers, DRC 0 errors and 0
+  unconnected (24 silk warnings), 80×65 mm. grblHAL compiles for the STM32F411, and the simulated machine (grblHAL in
+  Renode) passes in 21 s. The path there: the 30-min cap had cut the board off (fixed: the run waits for a build still
+  running, 22e23aa6); the grblHAL brief had been designed on the ESP32 (16420eb2); and the motor rails were too narrow
+  (bringup-board's 4b13b385 and 5c26ea71).

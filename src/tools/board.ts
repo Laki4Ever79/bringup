@@ -84,7 +84,10 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 // '.J3 > .M+' ... It has no ports") leaves its traces missing too, but neither more room nor more layers fixes it: not a
 // size failure, and no 4-layer retry (it built every failing revision twice).
 const PART_ERROR = /Could not find port for selector|has no ports/
-export const sizeFailure = (message: string): boolean => /^tscircuit build failed \(exit/.test(message) && !PART_ERROR.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
+// A failure the placement check found before any layout was built (unreachableCaps: every layout leaves a capacitor out of
+// reach) is the same cause tscircuit gives when it skips routing, and goes to the 4-layer retry and the bigger board the
+// same way: the CNC's GND-end bound (27 Nov 2026) failed outright once the check measured it.
+export const sizeFailure = (message: string): boolean => /^tscircuit build failed \((?:exit|placement check)/.test(message) && !PART_ERROR.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
 
 async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision: number): Promise<BoardArtifact> {
 	// A pin on a part that isn't there yet would only fail in tscircuit ("Could not find port for selector"), slowly and
@@ -459,7 +462,7 @@ const SUMMARY = /^Circuits\s+\d+ passed \d+ failed/
 // clean builds too: it was the only reason a too-long trace got another layout before.
 export const TOO_LONG = /exceeding the [\d.]+mm maximum/i
 export function layoutSensitive(error: string): boolean {
-	return /overlap|clearance|keepout|too close|exceeding the [\d.]+mm maximum/i.test(error)
+	return /overlap|clearance|keepout|too close|exceeding the [\d.]+mm maximum|[\d.]+mm maximum length for .* cannot be satisfied/i.test(error)
 }
 
 // What a failed build says, cause first. tscircuit's own errors (circuit.json) lead, then the log's. But when it skipped

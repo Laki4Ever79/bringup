@@ -1426,7 +1426,9 @@ function antennaLayout(s: ContractSnapshot, opts: PlacementOptions): Layout {
 	// A deeper band counts only when it leaves no more pin capacitors out of reach than the floor: on run 21's compact
 	// board 12 mm placed every part but pushed U2's VDD capacitor 6.55 mm from its pin (5 mm bound), a layout tscircuit
 	// refuses, where the floor kept it beside (27 Nov 2026).
-	const far = (z: number) => unreachableCaps(s, { ...opts, antennaClearMm: z }).length
+	// Measured the same whichever router follows (routingDisabled skips the check): else a Freerouting build's layout
+	// differed from tscircuit's for the same board (the arm fixture's In2 pours 13 against its 9 regions, 27 Nov 2026).
+	const far = (z: number) => unreachableCaps(s, { ...opts, routingDisabled: undefined, antennaClearMm: z }).length
 	const floorFar = far(floorMm)
 	for (const z of ANTENNA_CLEAR_MM.slice(0, -1)) {
 		const l = layoutUncached(s, { ...opts, antennaClearMm: z })
@@ -2939,6 +2941,18 @@ export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}
 	const placed = layoutBoard(s, opts).parts
 	const parts = s.values.parts ?? []
 	const out: string[] = []
+	// Where each GND member's pad is on this layout: a capacitor's GND end is bounded by tscircuit to the nearest of them,
+	// whichever part it is on (the CNC's ".C29 > .pin2 to net.GND", 5.74 mm: every 2-layer layout refused, 21 minutes
+	// of tscircuit layouts before the 4-layer retry, 27 Nov 2026).
+	let groundPads: { x: number; y: number }[] | null = null
+	const ground = () =>
+		(groundPads ??= (generatedNets(s).get("GND") ?? []).flatMap((e) => {
+			const [ref, pin] = e.split(".")
+			const part = parts.find((p) => p.ref === ref)
+			const box = placed.find((b) => b.ref === ref)
+			const at = part && box && box.rotation % 90 === 0 ? padOffset(footprintFor(part), part.pins.indexOf(pin) + 1, box.rotation) : null
+			return at && box ? [{ x: (box.ox ?? box.x) + at.x, y: (box.oy ?? box.y) + at.y }] : []
+		}))
 	for (const sp of pinEndedSupports(s)) {
 		const bound = capBound(s, sp)
 		if (bound === null) continue
@@ -2946,6 +2960,14 @@ export function unreachableCaps(s: ContractSnapshot, opts: PlacementOptions = {}
 		const t = CAP_TERMINAL_MM[sp.spec.footprint]
 		if (!cap || t === undefined) continue
 		const r = (cap.rotation * Math.PI) / 180
+		for (const [end, capPin, sign] of [[sp.a, "pin1", -1], [sp.b, "pin2", 1]] as const) {
+			if (!("net" in end) || end.net !== "GND" || !("ref" in (sign < 0 ? sp.b : sp.a))) continue
+			const pin = { x: (cap.ox ?? cap.x) + sign * t * Math.cos(r), y: (cap.oy ?? cap.y) + sign * t * Math.sin(r) }
+			const pads = ground()
+			if (!pads.length) continue
+			const d = Math.min(...pads.map((g) => Math.hypot(g.x - pin.x, g.y - pin.y)))
+			if (d > bound + CAP_REACH_MARGIN_MM) out.push(`the ${bound}mm maximum length for .${sp.ref} > .${capPin} to net.GND cannot be satisfied: its endpoints are ${d.toFixed(2)}mm apart`)
+		}
 		// Each end on a part's pin, tscircuit bounds both: pin 1 (the a end) and pin 2 (the b end, a chip's own GND):
 		// a rover's IMU capacitor passed on pin 1 and tscircuit refused its pin 2 to U6.GND at 5.01 mm (26 Nov 2026).
 		for (const [end, capPin, sign] of [[sp.a, "pin1", -1], [sp.b, "pin2", 1]] as const) {
