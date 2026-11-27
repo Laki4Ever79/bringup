@@ -21,7 +21,7 @@ const docker = (args: string[], timeoutMs: number): Promise<RunResult> => docker
 // Routes work/<pcbRel> in place. Returns null when it routed every connection, else why not. widths: the track width a
 // net needs over the fab's default (a rail's IPC-2221 width, circuit.ts routedWidths): Freerouting routes it at the
 // default, then freeroute.py widens it where clearance allows (thin only into fine-pitch pins; track-widths.ts judges).
-export async function freeroute(root: string, work: string, pcbRel: string, widths: Map<string, number> = new Map()): Promise<string | null> {
+export async function freeroute(root: string, work: string, pcbRel: string, widths: Map<string, number> = new Map(), fourLayers = false): Promise<string | null> {
 	const jar = resolve(root, FREEROUTING_JAR)
 	if (!existsSync(jar)) return `Freerouting isn't installed (${FREEROUTING_JAR})`
 	copyFileSync(resolve(root, "py/freeroute.py"), join(work, "freeroute.py"))
@@ -30,14 +30,32 @@ export async function freeroute(root: string, work: string, pcbRel: string, widt
 	const r = ROUTE
 	const wide = [...widths].filter(([, w]) => w > r.trackMm)
 	if (wide.length) writeFileSync(join(work, "widths.json"), JSON.stringify(Object.fromEntries(wide)))
-	const dsn = await docker([...v, KICAD_IMAGE, "python3", "freeroute.py", "dsn", pcbRel, "board.dsn", ...[r.trackMm, r.clearanceMm, r.viaMm, r.drillMm, r.edgeMm].map(String)], 180_000)
-	if (dsn.code !== 0 || !existsSync(join(work, "board.dsn"))) return `DSN export failed: ${tail(dsn)}`
-	const fr = await docker([...v, JAVA_IMAGE, "java", "-jar", "freerouting.jar", "-de", "board.dsn", "-do", "board.ses", "--gui.enabled=false", "-mp", String(r.passes)], 900_000)
-	if (fr.code !== 0 || !existsSync(join(work, "board.ses"))) return `Freerouting failed: ${tail(fr)}`
-	// Its count: "incomplete connections: N" while routing, "the board has N unrouted connection(s)" when it stops short
-	// (Freerouting 2.5, the arm board, 26 Nov 2026).
-	const last = [...(fr.stdout + fr.stderr).matchAll(/incomplete connections: (\d+)|the board has (\d+) unrouted connection/g)].map((m) => [m[0], m[1] ?? m[2]]).at(-1)
-	const incomplete = last ? Number(last[1]) : NaN
+	// One pass: the DSN (ground routed, or on a 4-layer board with ground left to its In1 plane: plane), Freerouting,
+	// and its count of unrouted connections: "incomplete connections: N" while routing, "the board has N unrouted
+	// connection(s)" when it stops short (Freerouting 2.5, the arm board, 26 Nov 2026).
+	const pass = async (plane: boolean, tag: string): Promise<{ fr: RunResult; incomplete: number } | string> => {
+		const env = plane ? ["-e", "BRINGUP_GND_PLANE=1"] : []
+		const dsn = await docker([...env, ...v, KICAD_IMAGE, "python3", "freeroute.py", "dsn", pcbRel, `board${tag}.dsn`, ...[r.trackMm, r.clearanceMm, r.viaMm, r.drillMm, r.edgeMm].map(String)], 180_000)
+		if (dsn.code !== 0 || !existsSync(join(work, `board${tag}.dsn`))) return `DSN export failed: ${tail(dsn)}`
+		const fr = await docker([...v, JAVA_IMAGE, "java", "-jar", "freerouting.jar", "-de", `board${tag}.dsn`, "-do", `board${tag}.ses`, "--gui.enabled=false", "-mp", String(r.passes)], 900_000)
+		if (fr.code !== 0 || !existsSync(join(work, `board${tag}.ses`))) return `Freerouting failed: ${tail(fr)}`
+		const last = [...(fr.stdout + fr.stderr).matchAll(/incomplete connections: (\d+)|the board has (\d+) unrouted connection/g)].map((m) => [m[0], m[1] ?? m[2]]).at(-1)
+		return { fr, incomplete: last ? Number(last[1]) : NaN }
+	}
+	const first = await pass(false, "")
+	if (typeof first === "string") return first
+	let { fr, incomplete } = first
+	// A 4-layer board Freerouting couldn't finish with ground as tracks: again with ground left to its In1 plane (stitch
+	// joins its pads), kept when it leaves fewer unrouted. lead-3's 100x80 CNC (rev 9): 25 unrouted with ground routed,
+	// every signal routed without it. Only as the fallback: on the arm, which routes with ground, the plane pass left 3
+	// small ground pads unjoined.
+	if (fourLayers && incomplete !== 0) {
+		const plane = await pass(true, "-plane")
+		if (typeof plane !== "string" && (Number.isNaN(incomplete) || plane.incomplete < incomplete)) {
+			;({ fr, incomplete } = plane)
+			for (const ext of ["dsn", "ses"]) copyFileSync(join(work, `board-plane.${ext}`), join(work, `board.${ext}`))
+		}
+	}
 	const ses = await docker([...v, KICAD_IMAGE, "python3", "freeroute.py", "ses", pcbRel, "board.ses", pcbRel, ...(wide.length ? ["widths.json", String(r.clearanceMm), String(r.edgeMm)] : [])], 300_000)
 	if (ses.code !== 0) return `SES import failed: ${tail(ses)}`
 	// Its whole output beside the board (freerouting.log), and its last lines in the reason when it gave no count.

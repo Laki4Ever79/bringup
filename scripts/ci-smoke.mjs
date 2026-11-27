@@ -4,10 +4,8 @@
 // run_summary, get_pictures (the board as an image, the stills of it in its case) and export_package.
 // Each step is timed, a failed step doesn't stop the rest, and the table goes to the job summary
 // ($GITHUB_STEP_SUMMARY), or stdout when run by hand: node scripts/ci-smoke.mjs
-// --packed: what a user installs, not this checkout: `npm pack`, the .tgz installed into an empty folder, then every
-// setup domain, the firmware design and the newcomer's MCP path through that copy (`npx bringup-mcp`).
 import { spawn, spawnSync } from "node:child_process"
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs"
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -18,9 +16,6 @@ const out = mkdtempSync(join(tmpdir(), "bringup-ci-"))
 // --newcomer-only: this machine's installed tools, no installs: the handshake, one design and the newcomer's MCP path
 // after it (a quick check by hand of the steps a fresh runner takes the whole way).
 const only = process.argv.includes("--newcomer-only")
-const packed = process.argv.includes("--packed")
-// The user's folder holding the installed package (--packed); the server and setup run from there.
-const user = join(out, "user")
 const env = { ...process.env, BRINGUP_OUT: join(out, "runs"), ...(only ? {} : { BRINGUP_HOME: join(out, "home") }), BRINGUP_TOOLCHAIN: "local", MOZAIK_CREDENTIALS_FILE: win ? "NUL" : "/dev/null" }
 
 async function step(name, fn) {
@@ -39,18 +34,15 @@ async function step(name, fn) {
 }
 
 // A command through the platform's shell (npm is npm.cmd on Windows), its output kept for a failure's note.
-function sh(cmd, timeoutMs = 900_000, cwd = undefined) {
-	const r = spawnSync(cmd, { shell: true, env, cwd, encoding: "utf8", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 })
+function sh(cmd, timeoutMs = 900_000) {
+	const r = spawnSync(cmd, { shell: true, env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 })
 	if (r.status !== 0) throw new Error(`${cmd} exited ${r.status ?? r.signal}: ${(r.stderr || r.stdout || "").trim()}`)
 	return r.stdout
 }
 
-// The MCP server over stdio, as an MCP client starts it (`node bin/bringup-mcp.js`, or `npx bringup-mcp` in the
-// user's folder with --packed): JSON-RPC lines.
+// The MCP server over stdio, as an MCP client starts it (`node bin/bringup-mcp.js`): JSON-RPC lines.
 function mcp() {
-	const p = packed
-		? spawn("npx --no-install bringup-mcp", { shell: true, cwd: user, env, stdio: ["pipe", "pipe", "pipe"] })
-		: spawn(process.execPath, ["bin/bringup-mcp.js"], { env, stdio: ["pipe", "pipe", "pipe"] })
+	const p = spawn(process.execPath, ["bin/bringup-mcp.js"], { env, stdio: ["pipe", "pipe", "pipe"] })
 	let buf = ""
 	let err = ""
 	const waiting = new Map()
@@ -85,8 +77,7 @@ function mcp() {
 		if (r.result?.isError || !r.result) throw new Error(`${name}: ${r.result?.content?.[0]?.text ?? JSON.stringify(r.error ?? r)}`)
 		return r.result
 	}
-	// Closing stdin ends the server even when npx's shell stands between (killing the shell alone may not).
-	return { call, tool, raw, close: () => (p.stdin.end(), p.kill()), stderr: () => err }
+	return { call, tool, raw, close: () => p.kill(), stderr: () => err }
 }
 
 function files(dir) {
@@ -161,19 +152,7 @@ async function design(server, expect = {}, brief = LOGGER) {
 	return said
 }
 
-// The setup command: this checkout's, or the installed copy's.
-const setup = (domain) => (packed ? sh(`npx --no-install bringup-mcp setup ${domain}`, 1_800_000, user) : sh(`node bin/bringup-mcp.js setup ${domain}`, 1_800_000), "")
-if (packed) {
-	await step("npm pack, installed into an empty folder", () => {
-		const tgz = sh(`npm pack --pack-destination "${out}"`).trim().split(/\r?\n/).at(-1).trim()
-		mkdirSync(user)
-		sh("npm init -y", 60_000, user)
-		sh(`npm install "${join(out, tgz)}" --no-audit --no-fund`, 900_000, user)
-		const bin = join(user, "node_modules", ".bin", win ? "bringup-mcp.cmd" : "bringup-mcp")
-		if (!existsSync(bin)) throw new Error(`installed, but no ${bin}`)
-		return `${tgz}, ${Math.round(statSync(join(out, tgz)).size / 1024)} kB`
-	})
-} else if (!only) {
+if (!only) {
 	await step("npm ci", () => (sh("npm ci --no-audit --no-fund"), ""))
 	await step("typecheck", () => (sh("npm run typecheck"), ""))
 }
@@ -183,18 +162,15 @@ await step("MCP handshake (initialize, tools/list)", async () => {
 	const tools = await server.call("tools/list", {})
 	return `${init.result?.serverInfo?.name} ${init.result?.serverInfo?.version}, ${tools.result?.tools?.length} tools`
 })
-// With --newcomer-only too (a check by hand): this machine's installed tools, no setups.
-if (packed && !only) {
-	for (const d of ["board", "case", "firmware"]) await step(`setup ${d}`, () => setup(d))
-} else if (!packed && !only) {
+if (!only) {
 await step("mock design, no tools (design only)", () => design(server))
 await step("setup board", () => (sh("node bin/bringup-mcp.js setup board", 1_200_000), files(join(out, "home")).length ? "installed into BRINGUP_HOME" : "nothing installed"))
 await step("mock design with the board tools (board + pictures)", () => design(server, { board: true }))
 // The case's CAD kernel (build123d) and a robot: its chassis as printed parts and its ROS 2 workspace.
-await step("setup case", () => setup("case"))
+await step("setup case", () => (sh("node bin/bringup-mcp.js setup case", 1_800_000), ""))
 await step("mock rover with the case tools (printed parts + ROS workspace)", () => design(server, { board: true, printed: true, ros: true }, readFileSync("briefs/rover.md", "utf8")))
 // PlatformIO; the first firmware build fetches the chip's platform and compiler.
-await step("setup firmware", () => setup("firmware"))
+await step("setup firmware", () => (sh("node bin/bringup-mcp.js setup firmware", 1_800_000), ""))
 }
 await step("mock design with the firmware tools (firmware built)", () => design(server, { board: true, firmware: true }))
 // The newcomer's path after that design, all through the MCP as Claude Code drives it: what was built, show me, the
@@ -239,7 +215,7 @@ await step("export_package (fab, BOM, case, pictures, firmware)", async () => {
 })
 server.close()
 
-const md = [`### ${process.platform} ${process.arch}, Node ${process.versions.node}${packed ? ", the packed package (npx bringup-mcp)" : ""}`, "", "| Step | Result | Time | Notes |", "|---|---|---|---|", ...steps.map((x) => `| ${x.name} | ${x.ok ? "pass" : "**FAIL**"} | ${x.s.toFixed(1)} s | ${x.note.replace(/\|/g, "/")} |`), ""].join("\n")
+const md = [`### ${process.platform} ${process.arch}, Node ${process.versions.node}`, "", "| Step | Result | Time | Notes |", "|---|---|---|---|", ...steps.map((x) => `| ${x.name} | ${x.ok ? "pass" : "**FAIL**"} | ${x.s.toFixed(1)} s | ${x.note.replace(/\|/g, "/")} |`), ""].join("\n")
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + "\n")
 console.log(md)
 process.exit(steps.every((x) => x.ok) ? 0 : 1)

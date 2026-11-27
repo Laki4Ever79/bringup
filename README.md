@@ -1,7 +1,5 @@
 # Bringup
 
-[![OS smoke test](https://github.com/Laki4Ever79/bringup/actions/workflows/os-smoke.yml/badge.svg)](https://github.com/Laki4Ever79/bringup/actions/workflows/os-smoke.yml)
-
 **Describe a circuit board or a whole robot in a few sentences. Bringup designs it: a custom PCB, the printed parts,
 the firmware and the parts list.**
 
@@ -12,8 +10,6 @@ the firmware and the parts list.**
   simulation, and a ROS 2 package.
 
 **Change “one thing”, and the whole design follows: board, printed parts, firmware and parts, in parallel.**
-
-Runs on **Linux, macOS and Windows**: each release is installed fresh and tested on all three. What changed: [CHANGELOG.md](https://github.com/Laki4Ever79/bringup/blob/main/CHANGELOG.md).
 
 ![The engineer types "add a temperature/humidity sensor": the affected agents wake, the checks find the mismatches, and board, case and firmware agree again](docs/img/hero.gif)
 

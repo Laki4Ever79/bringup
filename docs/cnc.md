@@ -233,26 +233,3 @@ Each failure on the way, with its general fix.
   revision 6, before the power tree; the revision-9 board is the CNC's routing density (">50 traces left unrouted"),
   bringup-board's next item. Found on the way: checks.ts -> fluidnc.ts -> grblhal.ts -> checks.ts read the signal
   list before it was set when grblhal.ts loaded first (firmware-log.test.ts); the list now lives in cnc/signals.ts.
-- 27 Nov, gap 2 (what the agents must write): the scripted CNC hand-wrote nine parts' nets that no prompt explained and
-  almost no check caught. A probe took each part's nets out in turn. The jack's (no 24 V), the e-stop plug's loop (an
-  e-stop that can never trip) and the UART TX resistor's (drivers never read back) left no violation at all. The motor
-  plugs, the spindle's MOSFET and its terminal gave only "connected to nothing", with no hint which net. Fix, in code
-  (src/cnc/wiring-auto.ts, applied by the contract tools on every CNC parts, pins, rails or cnc write, missing nets
-  only): the board's nets are the hand-wired design's, pin for pin. The mock now writes the CNC parts bare, as an agent
-  would, and the parts prompt says the tools wire them. Found on the way: the power tree finds the brick by the jack's
-  VIN, so on a bare jack it never ran (U8.VCC on no net); the wiring now goes first. `--no-hardware` mocks of both CNC
-  briefs: adopt UNSETTLED rev 9 with 1 violation (space-slack, 100×80) → settled rev 12 with 0 (80×64, 2% over its
-  smallest).
-- 27 Nov, gap 2 (pins): each scripted pin left out in turn. The driver checks named the whole entry, but grblHAL's
-  and FluidNC's missing-signal check named 7 signals with only "with its part's pin" (ESTOP_TRIP, the three limits,
-  STEPPER_UART, STEPPER_UART_TX, SPINDLE_PWM), and nothing asked for the UART's 1 kΩ TX resistor itself. Fix
-  (src/cnc/signal-ends.ts): every missing signal is listed with its partRef and partPin, found by role (the motors' by
-  the drivers' axis order). With no TX resistor, the check names the part to add (0402WGF1001TCE, its pin2 on
-  @STEPPER_UART).
-- 27 Nov, gap 2 (parts): each scripted part left out in turn. A missing jack, motor plug, spindle terminal or MOSFET
-  was silent. A missing spindle gate driver or enable gate showed only as a stray net or a request for ENN pins. A
-  missing first limit plug moved every axis' limit onto the next plug. Fix: the plugs the machine decides (jack, one
-  per motor, spindle terminal, e-stop plug, one limit plug per axis) are added in code, as an arm's are
-  (cnc/wiring-auto.ts withCncPlugs, then the wiring), and the three chips nothing asked for are named by role and part
-  (cnc/checks.ts). The mock now writes no plugs. `--no-hardware` mocks of both briefs: settled rev 12, 0 violations,
-  all eleven plugs from code (413 s and 469 s).

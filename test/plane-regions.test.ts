@@ -50,3 +50,25 @@ test("the power layer's split is weighted by need: the arm mock's VSERVO1 got 1 
 	assert.ok(regions.some((r) => r.net === "VSERVO1"))
 	for (const r of regions) assert.ok(r.neckMm >= need.get(r.net)!, `${r.net} ${r.neckMm} < ${need.get(r.net)}`)
 })
+
+// A rail whose region surrounds another's keeps it, the hole cut in by a keyhole: dropped before, the rail had no plane
+// (the arm fixture's VSERVO3, 27 Nov 2026).
+test("a region with another rail's inside it is kept, as one outline round both loops", async () => {
+	const { planeRegions } = await import("../src/codegen/plane-regions.ts")
+	// A at the four corners of a 40×40 board, B alone in the middle: B's region is an island in A's.
+	const rs = planeRegions(40, 40, [
+		{ net: "A", points: [{ x: -15, y: -15 }, { x: 15, y: -15 }, { x: 15, y: 15 }, { x: -15, y: 15 }] },
+		{ net: "B", points: [{ x: 0, y: 0 }] },
+	])
+	const a = rs.find((r) => r.net === "A")
+	const b = rs.find((r) => r.net === "B")
+	assert.ok(a && b, "both rails have a region")
+	// A's outline holds its corner pad and not B's middle (ray casting over the keyhole outline).
+	const inside = (p: { x: number; y: number }[], x: number, y: number) => {
+		let c = false
+		for (let i = 0, j = p.length - 1; i < p.length; j = i++) if (p[i].y > y !== p[j].y > y && x < ((p[j].x - p[i].x) * (y - p[i].y)) / (p[j].y - p[i].y) + p[i].x) c = !c
+		return c
+	}
+	assert.equal(inside(a.outline, -15, -15), true)
+	assert.equal(inside(a.outline, 0, 0), false, "B's middle is A's hole")
+})

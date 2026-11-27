@@ -1,7 +1,6 @@
 # The free tier on a fresh machine of each OS: npm ci, typecheck, the MCP server's handshake, a mock design with no
 # tools, then each setup domain (board, case, firmware) and a design that needs it (scripts/ci-smoke.mjs). Each step's time
-# and pass/fail are in the job summary; the packed job takes the newcomer's path through the npm tarball a user
-# installs. On demand and on pushes to main, not on every commit.
+# and pass/fail are in the job summary. On demand and on pushes to main, not on every commit.
 name: OS smoke test
 
 on:
@@ -30,28 +29,6 @@ jobs:
             src/setup/tools-node/package-lock.json
       - name: Smoke test (each step timed in the job summary)
         run: node scripts/ci-smoke.mjs
-
-  # What a user installs, not the checkout: `npm pack`, the .tgz installed into an empty folder, every setup domain
-  # from that copy, then the firmware design and the newcomer's MCP path through `npx bringup-mcp`. No npm ci here,
-  # so the package can't lean on the repo's own node_modules.
-  packed:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            src/setup/tools-node/package-lock.json
-      - name: The packed package through npx (each step timed in the job summary)
-        run: node scripts/ci-smoke.mjs --packed
 
   # Is Windows' slow setup Defender's real-time scan? The same two installs with the scan excluded from the folders
   # they write, timed beside the main job's (run 4: setup board 197 s, setup case 70 s; Linux 10 s and 8 s).

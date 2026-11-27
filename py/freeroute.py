@@ -14,6 +14,7 @@
 """
 import json
 import math
+import os
 import sys
 import pcbnew
 
@@ -71,6 +72,20 @@ def dsn(pcb, out, track, clearance, via, drill, edge):
     nc.SetViaDiameter(pcbnew.FromMM(via))
     nc.SetViaDrill(pcbnew.FromMM(drill))
     edge_ring(b, edge)
+    # Before any zone is removed: after that, GetFootprints() hands back raw SWIG objects (the arm, 27 Nov 2026:
+    # "'SwigPyObject' object has no attribute 'Pads'").
+    # Ground isn't Freerouting's job on 4 layers: In1 is its plane and stitch joins every ground pad to it by a via.
+    # Routed as tracks, ground was the most connections and the densest net: lead-3's 100x80 CNC (mock 13: GND 67
+    # unrouted; mock 15 rev 9: "over 50 traces remaining"). In the DSN copy only, its pads are netless obstacles:
+    # Freerouting keeps clear of them and routes the other nets; the board file keeps their net. Only ground: taking
+    # every plane net off (with an inner keepout) left 24 unrouted on the arm board, 26 Nov 2026.
+    # The ground-plane pass (BRINGUP_GND_PLANE=1), run when the first pass, ground routed, left connections unrouted
+    # (src/tools/freerouting.ts): ground routed as tracks joins the small pads stitch finds no room beside (the arm: 3).
+    if four and os.environ.get("BRINGUP_GND_PLANE") == "1":
+        for fp in b.GetFootprints():
+            for pad in fp.Pads():
+                if pad.GetNetname() == "GND":
+                    pad.SetNetCode(0)
     # The outer layers' copper pours stay out of the DSN (only this in-memory board loses them; the file keeps them):
     # handed to Freerouting as planes it took every pad on one as joined through it, but the refilled pour came back cut
     # by the tracks on its layer, and the pads on its pieces unjoined (the arm board, 26 Nov 2026: 6 GND items
@@ -209,12 +224,49 @@ def stitch(b, nets, clearance, edge):
             if all(poly.Contains(pcbnew.VECTOR2I(pos.x + dx, pos.y + dy)) for dx, dy in ((0, 0), (margin, 0), (-margin, 0), (0, margin), (0, -margin))):
                 return True
         return False
+    def via_at(pad, pos):
+        via = pcbnew.PCB_VIA(b)
+        via.SetPosition(pos)
+        via.SetWidth(pcbnew.FromMM(STITCH_VIA_MM[0]))
+        via.SetDrill(pcbnew.FromMM(STITCH_VIA_MM[1]))
+        via.SetNet(pad.GetNet())
+        return via
+
+    def free(item, net, layers):
+        copper = [x for x in b.GetTracks()] + [q for f in b.GetFootprints() for q in f.Pads()]
+        return all(fits(item, l, [o for o in copper if o.GetNetname() != net and o.IsOnLayer(l)], clr, inner) for l in layers)
+
+    def holes_ok(pos, net):
+        holes = [q for f in b.GetFootprints() for q in f.Pads() if q.HasHole()] + [x for x in b.GetTracks() if x.Type() == pcbnew.PCB_VIA_T]
+        v = via_at_net(net, pos)
+        return clear_of_holes(v, pcbnew.F_Cu, net, holes, hole_clr) and all(drill_gap(pos, STITCH_VIA_MM[1], h) >= HOLE_TO_HOLE_MM for h in holes)
+
+    def via_at_net(net, pos):
+        v = pcbnew.PCB_VIA(b)
+        v.SetPosition(pos)
+        v.SetWidth(pcbnew.FromMM(STITCH_VIA_MM[0]))
+        v.SetDrill(pcbnew.FromMM(STITCH_VIA_MM[1]))
+        v.SetNet(b.FindNet(net))
+        return v
+
+    joined = set()
+    unjoined = []
     for fp in b.GetFootprints():
         for pad in fp.Pads():
             if pad.GetNetname() not in nets or pad.HasHole():
                 continue
             layer = pcbnew.F_Cu if pad.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu
             c = pad.GetPosition()
+            net = pad.GetNetname()
+            # A pad that holds a via (a QFN's exposed pad, a regulator's tab) takes one at its centre, a thermal via too:
+            # beside a fine-pitch package the rings found no room (the CNC's four TMC2209s, 27 Nov 2026: 26 GND pads
+            # unjoined once ground left the router).
+            if min(pad.GetSize().x, pad.GetSize().y) >= pcbnew.FromMM(STITCH_VIA_MM[0] + 0.1) and in_region(net, c):
+                v = via_at(pad, c)
+                if free(v, net, [l for l in copper_layers if l != layer]) and holes_ok(c, net):
+                    b.Add(v)
+                    joined.add(pad.m_Uuid.AsString())
+                    continue
             reach = max(pad.GetSize().x, pad.GetSize().y) / 2
             placed = False
             for extra in (0.55, 0.9, 1.3, 1.8):
@@ -253,9 +305,38 @@ def stitch(b, nets, clearance, edge):
                         break
                 if placed:
                     break
+            if placed:
+                joined.add(pad.m_Uuid.AsString())
+            else:
+                unjoined.append(pad)
+    # A pad with no room for a via (a fine-pitch ground pin) joins the nearest pad of its net on the same part that is
+    # joined, by a straight track on its layer where that fits (a TMC2209's GND pin 3 to its exposed pad).
+    for pad in unjoined:
+        layer = pcbnew.F_Cu if pad.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu
+        net = pad.GetNetname()
+        # Its own part's joined pads first, then any joined pad or via of its net within JOIN_MM (a capacitor's ground
+        # pad beside another part's stitch via: the CNC's C6, 27 Nov 2026).
+        here = pad.GetPosition()
+        dist = lambda q: (q.GetPosition() - here).EuclideanNorm()
+        own = [q for q in pad.GetParentFootprint().Pads() if q.GetNetname() == net and q.m_Uuid.AsString() in joined and q.IsOnLayer(layer)]
+        near = [q for f in b.GetFootprints() for q in f.Pads() if q.GetNetname() == net and q.m_Uuid.AsString() in joined and q.IsOnLayer(layer) and q.GetParentFootprint() is not pad.GetParentFootprint()]
+        near += [v for v in b.GetTracks() if v.Type() == pcbnew.PCB_VIA_T and v.GetNetname() == net]
+        mates = sorted(own, key=dist)[:3] + sorted((q for q in near if dist(q) <= pcbnew.FromMM(JOIN_MM)), key=dist)[:4]
+        for q in mates:
+            t = pcbnew.PCB_TRACK(b)
+            t.SetStart(here)
+            t.SetEnd(q.GetPosition())
+            t.SetWidth(pcbnew.FromMM(STITCH_TRACK_MM))
+            t.SetLayer(layer)
+            t.SetNet(pad.GetNet())
+            if free(t, net, [layer]):
+                b.Add(t)
+                joined.add(pad.m_Uuid.AsString())
+                break
 
 
 HOLE_TO_HOLE_MM = 0.25
+JOIN_MM = 3.0
 
 
 def drill_gap(pos, drill_mm, h):

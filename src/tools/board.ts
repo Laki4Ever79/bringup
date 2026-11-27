@@ -360,7 +360,7 @@ async function buildIn(env: Env, work: string, s: ContractSnapshot, revision: nu
 	const circuitPath = join(work, "dist/board/circuit.json")
 	// Placed only: Freerouting routes it (src/tools/freerouting.ts).
 	if (placement.routingDisabled && build.code === 0 && existsSync(circuitPath)) {
-		const why = await freeroute(env.root, work, "dist/board/kicad/board.kicad_pcb", new Map([...routedWidths(s, true)].filter(([n]) => !planeRails(s).includes(n))))
+		const why = await freeroute(env.root, work, "dist/board/kicad/board.kicad_pcb", new Map([...routedWidths(s, true)].filter(([n]) => !planeRails(s).includes(n))), boardLayers(s).layers === 4)
 		if (why) {
 			writeFileSync(join(dir, "build.log"), build.stdout + "\n" + build.stderr)
 			throw new Error(`tscircuit build failed (exit 1):\nFreerouting: ${why}`)

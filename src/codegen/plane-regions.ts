@@ -77,10 +77,31 @@ export function planeRegions(widthMm: number, heightMm: number, rails: RailPads[
 		const padCells = [...new Set(rails[rail].points.map((p) => Math.floor((p.y - y0) / stepMm) * nx + Math.floor((p.x - x0) / stepMm)).filter((c) => inComp.has(c)))]
 		if (!padCells.length) continue
 		const loops = boundary(comp, nx, x0, y0, stepMm)
-		if (loops.length !== 1) continue // a piece with a hole: another rail's region inside it
-		out.push({ net: rails[rail].net, outline: loops[0], cells: comp.length, neckMm: neck(comp, inComp, padCells, nx, ny, stepMm) })
+		// A piece with a hole (another rail's region inside it) keeps its region: the holes joined to the outer loop by a
+		// keyhole cut, one outline as a pour takes it (KiCad's own fills are drawn that way). Dropped before, the rail had
+		// no region at all: the arm fixture's VSERVO3 once its buck's bootstrap capacitor sat between BOOT and SW (27 Nov
+		// 2026).
+		out.push({ net: rails[rail].net, outline: keyhole(loops), cells: comp.length, neckMm: neck(comp, inComp, padCells, nx, ny, stepMm) })
 	}
 	return out
+}
+
+// One outline from a piece's boundary loops: the largest is the outer one, and each other (a hole) is spliced in at the
+// pair of vertices nearest each other, walked round and back to the cut.
+function keyhole(loops: { x: number; y: number }[][]): { x: number; y: number }[] {
+	const area = (l: { x: number; y: number }[]) => Math.abs(l.reduce((a, p, i) => a + p.x * l[(i + 1) % l.length].y - l[(i + 1) % l.length].x * p.y, 0)) / 2
+	const sorted = [...loops].sort((a, b) => area(b) - area(a))
+	let outer = sorted[0]
+	for (const hole of sorted.slice(1)) {
+		let best = { d: Infinity, o: 0, h: 0 }
+		outer.forEach((p, o) => hole.forEach((q, h) => {
+			const d = Math.hypot(p.x - q.x, p.y - q.y)
+			if (d < best.d) best = { d, o, h }
+		}))
+		const round = [...hole.slice(best.h), ...hole.slice(0, best.h), hole[best.h]]
+		outer = [...outer.slice(0, best.o + 1), ...round, ...outer.slice(best.o)]
+	}
+	return outer
 }
 
 // The boundary loops of a set of grid cells: the cell edges not shared by two cells of the set, chained, with collinear

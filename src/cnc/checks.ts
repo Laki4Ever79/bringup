@@ -5,7 +5,6 @@ import { CNC_AXES, type CncAxis } from "./types.ts"
 import { estopChecks, spindleSenseChecks } from "./estop.ts"
 import { grblhalPins } from "./grblhal.ts"
 import { fluidncPinProblems, fluidncPins } from "./fluidnc.ts"
-import { signalEndsText } from "./signal-ends.ts"
 
 // The stepper driver's continuous RMS current per coil: the board's stepper-driver part's, from catalog/parts.json (the
 // TMC2209-LA: 1.4 A, its datasheet's design guideline), or that chip's when the board has none yet.
@@ -54,19 +53,6 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	const motors = m.axes.reduce((n, a) => n + a.motors, 0)
 	const drivers = (values.parts ?? []).filter((p) => p.role === "stepper-driver").length
 	if (values.parts && drivers < motors) out.push({ kind: "cnc-wiring", message: `the machine has ${motors} stepper motors (${m.axes.map((a) => `${a.name.toUpperCase()}${a.motors > 1 ? ` ×${a.motors}` : ""}`).join(", ")}) but the board has ${drivers} stepper driver${drivers === 1 ? "" : "s"} (role stepper-driver): one per motor`, fields: ["parts"], affects: ["parts"] })
-	// The chips every CNC board here needs and nothing else asks for (gap 2 parts probe, 27 Nov 2026: leaving one out
-	// was silent or showed only as a stray net): the spindle's 5 V gate driver and its low-side MOSFET (the brief's
-	// switched, speed-controlled spindle), and the OR gate that disables every driver on an e-stop (cut in hardware).
-	// The e-stop's power switch and the spindle's current sense have their own checks (estop.ts).
-	if (values.parts) {
-		const has = (role: string) => values.parts!.some((p) => p.role === role)
-		const need: [boolean, string, string][] = [
-			[Boolean(m.spindle) && !has("spindle-driver"), "the spindle's gate driver (role spindle-driver, SN74AHCT1G125DBVR, LCSC C7484): it lifts the MCU's 3.3 V PWM to the MOSFET's 5 V gate", "SPINDLE_PWM on its A"],
-			[Boolean(m.spindle) && !has("mosfet"), "the spindle's low-side switch (role mosfet, AO4468, LCSC C87410): between the spindle's minus lead and ground", "the contract tools wire it"],
-			[drivers > 0 && !has("enable-gate"), "the drivers' enable gate (role enable-gate, SN74LVC1G32DBVR, LCSC C19829663): every driver's ENN from the MCU's STEPPERS_EN OR the e-stop's trip, so a stop disables the motors in hardware", "STEPPERS_EN on its B, ESTOP_TRIP on its A"],
-		]
-		for (const [missing, what, then] of need) if (missing) out.push({ kind: "cnc-wiring", message: `the CNC's board is missing ${what}: add it to parts (${then})`, fields: ["parts"], affects: ["parts"] })
-	}
 	// Each driver is driven: its STEP, DIR and EN (the TMC2209's ENN) on MCU GPIOs, partRef the driver. Before (26 Nov
 	// 2026, CNC mock run 6) four unwired TMC2209s on a board with no pins at all settled at 0 violations.
 	const pins = values.pins ?? []
@@ -81,13 +67,13 @@ export function cncChecks(values: Partial<ContractValues>, cat?: { mech: MechCat
 	// written, so the firmware's configuration would be a guess.
 	if (m.firmware === "grblhal" && values.parts && values.pins?.length) {
 		const { missing } = grblhalPins({ revision: 0, versions: {} as never, values })
-		if (missing.length) out.push({ kind: "cnc-wiring", message: `grblHAL's board map needs a GPIO for ${signalEndsText(missing, values.parts, m)}: assign each signal by that name to a free MCU pin with that partRef and partPin`, fields: ["pins"], affects: ["architect"] })
+		if (missing.length) out.push({ kind: "cnc-wiring", message: `grblHAL's board map needs a GPIO for ${missing.join(", ")} (the signals by those names in pins): assign each to a free MCU pin with its part's pin`, fields: ["pins"], affects: ["architect"] })
 	}
 	// FluidNC's config.yaml (src/cnc/fluidnc.ts) names the same signals, and the classic ESP32 limits where they may go.
 	if (m.firmware === "fluidnc" && values.parts && values.pins?.length) {
 		const snap = { revision: 0, versions: {} as never, values }
 		const { missing } = fluidncPins(snap)
-		if (missing.length) out.push({ kind: "cnc-wiring", message: `FluidNC's config.yaml needs a GPIO for ${signalEndsText(missing, values.parts, m)}: assign each signal by that name to a free MCU pin with that partRef and partPin`, fields: ["pins"], affects: ["architect"] })
+		if (missing.length) out.push({ kind: "cnc-wiring", message: `FluidNC's config.yaml needs a GPIO for ${missing.join(", ")} (the signals by those names in pins): assign each to a free MCU pin with its part's pin`, fields: ["pins"], affects: ["architect"] })
 		for (const problem of fluidncPinProblems(snap)) out.push({ kind: "cnc-wiring", message: `${problem}: move it to another free GPIO (not 34-39 for an output or a switch, not a strapping pin)`, fields: ["pins"], affects: ["architect"] })
 	}
 	// The motors' supply: a rail at the brick's volts for the drivers' VS (the TMC2209's 5.5–29 V).

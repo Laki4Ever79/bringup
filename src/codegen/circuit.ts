@@ -591,9 +591,12 @@ export function supportParts(s: ContractSnapshot): Support[] {
 	return jobs.map((j) => {
 		// A passive the contract already lists stands in for the generated one it duplicates: same kind and the same part,
 		// by its LCSC number or its maker's part number (an agent's CL05A105KA5NQNC under another LCSC number, or none,
-		// was left wired to nothing beside the generator's own: cad's arm run C4, 26 Nov 2026). One with nets of its own
-		// is the agents' wiring, not a duplicate.
-		const own = parts.find((p) => p.role === j.spec.kind && (p.lcsc === j.spec.lcsc || (!p.nets && p.mpn === j.spec.mpn)) && !claimed.has(p.ref))
+		// was left wired to nothing beside the generator's own: cad's arm run C4, 26 Nov 2026). One with nets of its own,
+		// or one a contract pin ends on, is the agents' wiring, not a duplicate, whichever number matches: the CNC's UART TX
+		// resistor (1 kΩ, the LED resistor's C11702; its pin2 on @STEPPER_UART, STEPPER_UART_TX on its pin1) stood in for
+		// a missing LED resistor and put its pin2 on GND, a short (gap 2 parts probe, 27 Nov 2026).
+		const wired = (p: Part) => Boolean(p.nets && Object.keys(p.nets).length) || (s.values.pins ?? []).some((x) => x.partRef === p.ref)
+		const own = parts.find((p) => p.role === j.spec.kind && !wired(p) && (p.lcsc === j.spec.lcsc || p.mpn === j.spec.mpn) && !claimed.has(p.ref))
 		if (own) {
 			claimed.add(own.ref)
 			return { ...j, ref: own.ref, added: false, pins: [own.pins[0] ?? "pin1", own.pins[1] ?? "pin2"] }
@@ -638,7 +641,8 @@ function labelsFor(p: Part, footprint: string): string {
 	const chip = chipProfile(p)
 	if (chip && footprint === chip.package.footprint) return ` pinLabels={${JSON.stringify(chipPinLabels(chip))}}`
 	if (footprint === BUTTON_FOOTPRINT && p.pins.includes("A") && p.pins.includes("B")) return ` pinLabels={{ pin1: "A", pin3: "B" }}`
-	return ` pinLabels=${pinLabels(p.pins)}`
+	// A thermal pad the pins don't name gets a label (tscircuit makes ports only for labelled pins), so it can be wired: "thermalpad", the footprinter's port hint on that pad, which is how tscircuit ties a pad to a port.
+	return ` pinLabels=${pinLabels(thermalPadPin(footprint, p.pins.length) !== null ? [...p.pins, "thermalpad"] : p.pins)}`
 }
 
 // ESP32-C3-MINI-1 (datasheet v2.2, Table 3-1 and Figure 11-1). Origin at the module centre, antenna toward +y.
@@ -3225,6 +3229,14 @@ export function uniqueNames(lines: string[]): string[] {
 	}
 	return out
 }
+// The pad number of a footprint's thermal pad when the part's pins don't name it: tscircuit numbers it after the leads
+// ("qfn28_..._thermalpad3.7mmx3.7mm": pad 29). Null without a thermal pad, or when a pin names it.
+export function thermalPadPin(footprint: string, pinCount: number): number | null {
+	if (!/thermalpad/.test(footprint)) return null
+	const m = /^(?:qfn|tssop|soic|sop|dfn|htssop|vqfn|wqfn)(\d+)/.exec(footprint)
+	const leads = m ? Number(m[1]) : null
+	return leads !== null && pinCount === leads ? leads + 1 : null
+}
 export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions = {}): string {
 	const { outline, parts = [], pins = [], connectors = [] } = s.values
 	if (!outline) throw new Error("circuitFromContract: contract has no outline")
@@ -3244,6 +3256,12 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		}
 		const fp = ownFootprint(footprint) ?? q(footprint)
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
+		// A thermal pad the pin list doesn't name (the TMC2209's pin 29, the DRV8833's pin 17: both to GND by their
+		// datasheets) was left without a net: on a 4-layer board ground is stitched to In1, so the pad takes GND and a via,
+		// and the chip's fine-pitch GND pins join it (the CNC's four TMC2209s, 27 Nov 2026: 26 GND pads unjoined). Left
+		// alone on 2 layers, where tscircuit would have to route it from under the package (backlog).
+		const ep = thermalPadPin(footprint, p.pins.length)
+		if (ep !== null && boardLayers(s).layers === 4) lines.push(`<trace name=${q(`${p.ref}_EP_GND`)} from=${q(`.${p.ref} > .pin${ep}`)} to="net.GND" />`)
 	}
 
 	// The chip's crystal: pin 1 to OSC_IN, pin 3 to OSC_OUT, straight traces (short, no net of their own).
