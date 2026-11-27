@@ -23,8 +23,11 @@ export const BUILDS = {
 	// requirements: the product firmware's sleep period is requirements.dutyCycle.periodS (pins.h DUTY_PERIOD_S).
 	// model: model.h sizes the tensor arena and the weights the firmware reserves. connectivity: the radio code, the
 	// reports and the partition table. links: link.h, the links' protocols and the messages that cross them. behavior and
-	// model are optional inputs (behavior.h has defaults; model.h says MODEL_PRESENT 0).
-	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model", "connectivity", "links"], requires: ["parts", "pins"] },
+	// model are optional inputs (behavior.h has defaults; model.h says MODEL_PRESENT 0). mechanics, motion: a robot's
+	// firmware is the rover firmware, its hw_pins.h written from them (src/mechanics/firmware.ts roverHeader: the track,
+	// the wheel, the turn scale, the cruise speed); without them a mechanics change left the program you flash stale
+	// while the simulated drive, which builds its own copy, moved on (27 Nov 2026).
+	firmware: { inputs: ["parts", "pins", "behavior", "requirements", "model", "connectivity", "links", "mechanics", "motion"], requires: ["parts", "pins"] },
 	// The test pads follow the board's placement (outline, connectors, parts); the limits follow the power budget (rails,
 	// requirements); the self-tests follow the pins and parts. Only when the contract has a test field.
 	testkit: { inputs: ["test", "outline", "connectors", "parts", "pins", "rails", "requirements"], requires: ["test", "outline", "pins"], optional: "test" },
