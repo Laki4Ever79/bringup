@@ -29,7 +29,7 @@ export function diffFile(prev: FileState | undefined, next: Buffer, path: string
 // Build products and caches stay on the machine: a firmware build's .pio folder, node_modules, the package's .work,
 // linker outputs, the connector's own bookkeeping (.studio/), a firmware image over 4 MB and anything over 32 MB (a
 // recorded simulation video).
-const SKIP_DIRS = new Set([".pio", "node_modules", ".work", ".studio", ".git"])
+const SKIP_DIRS = new Set([".pio", "node_modules", ".work", ".package-work", ".studio", ".git"])
 export const MAX_FILE_BYTES = 32 * 1024 * 1024
 export const MAX_BIN_BYTES = 4 * 1024 * 1024
 export function syncable(path: string, size: number): boolean {

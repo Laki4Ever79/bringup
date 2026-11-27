@@ -202,15 +202,16 @@ await step("get_pictures stills: true (the board in its case)", async () => {
 	return `${stills.length} stills, ${r.content.filter((c) => c.type === "image").length} inline`
 })
 await step("export_package (fab, BOM, case, pictures, firmware)", async () => {
-	// A mock design's review is scripted, so the package gate refuses it unless forced: the refusal must say how.
-	const refused = await server.raw("export_package", { runId: need() }, 1_800_000).then(() => null, (e) => String(e.message))
-	if (refused !== null && !/force/.test(refused)) throw new Error(`refused without saying how to go on: ${refused}`)
-	const p = await server.tool("export_package", { runId: need(), force: true }, 1_800_000)
+	// A mock design packages without force, its README opening with the scripted-review banner.
+	const p = await server.tool("export_package", { runId: need() }, 1_800_000)
 	const all = files(p.package).map((x) => x.f.slice(p.package.length + 1).replace(/\\/g, "/"))
 	const want = ["fab/gerbers.zip", "fab/bom.csv", "fab/cpl.csv", "printed/case.stl", "printed/lid.stl", "assembly/exploded.png", "firmware/firmware.bin", "parts.md", "assembly.md", "bringup.md", "README.md"]
 	const lacking = want.filter((f) => !all.includes(f))
 	if (lacking.length) throw new Error(`the package lacks ${lacking.join(", ")}; it has: ${all.join(", ").slice(0, 900)}`)
-	return `${all.length} files, every expected one`
+	const clutter = all.filter((f) => /^\.|[\/]\./.test(f))
+	if (clutter.length) throw new Error(`the package holds build files: ${clutter.slice(0, 5).join(", ")} (${clutter.length})`)
+	if (!/scripted agents/.test(readFileSync(join(p.package, "README.md"), "utf8").split("\n").slice(0, 4).join("\n"))) throw new Error("a mock design's README doesn't open with the scripted-review banner")
+	return `${all.length} files, every expected one, the scripted-review banner on top`
 })
 server.close()
 

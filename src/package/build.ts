@@ -7,7 +7,7 @@
 //   firmware/  the built firmware and how to flash it
 //   assembly.md, bringup.md (bench bring-up), README.md (totals and what's missing)
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
-import { basename, join } from "node:path"
+import { basename, dirname, join, resolve } from "node:path"
 import { enclosureMode, type ContractSnapshot } from "../contract/types.ts"
 import { checkConsistency } from "../contract/consistency.ts"
 import type { Env } from "../tools/env.ts"
@@ -45,6 +45,8 @@ export function jlcEstimate(board: { widthMm: number; heightMm: number; layers?:
 
 export interface PackageResult {
 	dir: string
+	// From a free mock run: the README and assembly.md open with SCRIPTED_BANNER.
+	scripted?: boolean
 	cheaper?: ReturnType<typeof jlcSwaps>
 	// The bought lines as the shops list them, for the README's "How to order".
 	robotLines?: { item: string; mpn: string; qty: number; packs?: number; supplier: string | null; url: string | null; lineUsd: number | null; status: string }[]
@@ -62,11 +64,13 @@ export interface PackageResult {
 const csvRows = (path: string) => readFileSync(path, "utf8").trim().split(/\r?\n/).slice(1).map((l) => l.match(/("([^"]|"")*"|[^,]*)(,|$)/g)!.map((c) => c.replace(/,$/, "").replace(/^"|"$/g, "").replace(/""/g, '"')))
 const usd = (n: number | null) => (n === null ? "?" : `$${n.toFixed(2)}`)
 
-export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string, opts: { root: string; python: string; pio: string; log?: (m: string) => void; runDir?: string }): Promise<PackageResult> {
+export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string, opts: { root: string; python: string; pio: string; log?: (m: string) => void; runDir?: string; scripted?: boolean }): Promise<PackageResult> {
 	const log = opts.log ?? (() => {})
 	const rev = s.revision
 	mkdirSync(outDir, { recursive: true })
-	const work = join(outDir, ".work")
+	// The builds' own files (tscircuit's caches, PlatformIO's build folder: about 900 files) beside the package, not in it:
+	// the package holds what a person needs.
+	const work = join(dirname(resolve(outDir)), ".package-work")
 	const missing: string[] = [], outOfStock: string[] = [], unpriced: string[] = []
 	const findings = checkConsistency(s, {}).map((v) => `${v.kind}: ${v.message}`)
 
@@ -145,7 +149,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 			// The robot's ROS 2 workspace, written beside its chassis (docs/ros.md): free, like every file (the user, 26 Nov
 			// 2026: "approved with ROS free"). Before, only the run folder had it, deep in chassis/rev-N/ros.
 			copyRosWorkspace(join(work, "chassis"), outDir)
-		} else missing.push(`the chassis didn't build: ${(ch as { error?: string }).error ?? "see .work/chassis"}`)
+		} else missing.push(`the chassis didn't build: ${(ch as { error?: string }).error ?? "see .package-work/chassis"}`)
 	}
 
 	// 3b. An arm (values.arm): its printed parts (py/arm.py through src/tools/arm.ts) as STL and STEP, its sweep's and
@@ -205,7 +209,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 				: { files: [], note: s.values.mechanics ? "no assembly pictures: the chassis didn't build" : s.values.arm ? "no assembly pictures: the arm's parts didn't build" : null }
 	writeFileSync(
 		join(outDir, "assembly.md"),
-		assemblyOrder(s, [...stls.map((f) => basename(f)), ...armFiles.filter((f) => f.endsWith(".stl"))]) + (pictures.files.length ? `\n## Pictures\n\n${caseDir ? "The case, the board in it and the lid on, exploded, and from the top and the side (the case built here, the board on its standoffs)" : `The robot after each step, exploded, and from the top and the side (${arm ? "the arm's printed parts built here, at rest, with its servos" : "the chassis built here, with the bought parts where they go"})`}:\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
+		assemblyOrder(s, [...stls.map((f) => basename(f)), ...armFiles.filter((f) => f.endsWith(".stl"))], opts.scripted) + (pictures.files.length ? `\n## Pictures\n\n${caseDir ? "The case, the board in it and the lid on, exploded, and from the top and the side (the case built here, the board on its standoffs)" : `The robot after each step, exploded, and from the top and the side (${arm ? "the arm's printed parts built here, at rest, with its servos" : "the chassis built here, with the bought parts where they go"})`}:\n\n${pictures.files.map((f) => `![${basename(f, ".png")}](${f})`).join("\n")}\n` : pictures.note ? `\n${pictures.note}\n` : ""),
 	)
 	const partsMd = [
 		`# Parts (prices and stock checked ${new Date().toISOString().slice(0, 10)})`,
@@ -238,7 +242,7 @@ export async function buildPackage(env: Env, s: ContractSnapshot, outDir: string
 		"",
 	].join("\n")
 	writeFileSync(join(outDir, "parts.md"), partsMd)
-	const result: PackageResult = { dir: outDir, cheaper, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings, pictures }
+	const result: PackageResult = { dir: outDir, ...(opts.scripted ? { scripted: true } : {}), cheaper, robotLines: (robot?.lines ?? []).map((l) => ({ item: l.item, mpn: l.mpn, qty: l.qty, packs: (l as { packs?: number }).packs, supplier: l.supplier, url: l.url, lineUsd: l.lineUsd, status: l.status })), jlc, boardUsd, robotUsd, missing, outOfStock, unpriced, findings, pictures }
 	writeFileSync(join(outDir, "README.md"), readme(s, result, fabOk, [...stls.map((f) => basename(f)), ...armFiles], Boolean(fwBin)))
 	return result
 }
@@ -287,7 +291,10 @@ export async function packageCase(python: string, root: string, dir: string, out
 	return { dir, stls, findings: print && !print.ok ? print.issues.map((x) => `case print check: ${x}`) : [], missing: [] }
 }
 
-export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
+// The first thing a mock design's package says (bringup-lead-2's wording, 27 Nov 2026): best effort, said plainly.
+export const SCRIPTED_BANNER = "> **Designed by Bringup's scripted agents (a free mock run): the review is scripted, not a model's. Check the board and parts before ordering.**"
+
+export function assemblyOrder(s: ContractSnapshot, stls: string[], scripted = false): string {
 	const v = s.values, m = v.mechanics
 	const parts = v.parts ?? []
 	const plug = (role: string) => parts.filter((p) => p.role === role).map((p) => p.ref).join(", ")
@@ -332,7 +339,7 @@ export function assemblyOrder(s: ContractSnapshot, stls: string[]): string {
 			`Plug the servos into the board's channels (${a.joints.map((j) => `${j.name} ${j.channel}`).join(", ")}, gripper ${a.gripper.channel}) and the ${a.input.volts} V brick last, then run bringup.md.`,
 		)
 	}
-	return ["# Assembly order", "", ...steps.map((t, i) => `${i + 1}. ${t}`), ""].join("\n")
+	return ["# Assembly order", "", ...(scripted ? [SCRIPTED_BANNER, ""] : []), ...steps.map((t, i) => `${i + 1}. ${t}`), ""].join("\n")
 }
 
 function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: string[], fw: boolean): string {
@@ -342,6 +349,7 @@ function readme(s: ContractSnapshot, r: PackageResult, fabOk: boolean, stls: str
 	return [
 		`# Build package: ${s.values.requirements?.summary ?? "design"} (contract revision ${s.revision})`,
 		"",
+		...(r.scripted ? [SCRIPTED_BANNER, ""] : []),
 		"Rebuilt from the design contract on today's code. Nothing here has been ordered: the person building decides that.",
 		"",
 		"| What | Where | Status |",

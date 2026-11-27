@@ -43,7 +43,17 @@ export function packageGate(contractPath: string, s: ContractSnapshot): string[]
 		const verdict = /^Verdict: (\w+)(.*)$/m.exec(report)
 		if (!verdict) out.push("the report has no brief review verdict")
 		else if (verdict[1] !== "pass") out.push(`the brief review's verdict is ${verdict[1]}`)
-		else if (/scripted reviewer/.test(verdict[2])) out.push("the review verdict is a mock run's scripted one, not a model's")
+		// A mock design's scripted pass doesn't hold the package: it packages with a banner saying so (scriptedReview).
 	}
 	return out
+}
+
+// A design from a free mock run: its brief review passed, but by the scripted reviewer, not a model. Its package opens
+// with a banner saying so instead of being refused (27 Nov 2026: mocks are the default, so a newcomer's first "package
+// it" was always a refusal).
+export function scriptedReview(contractPath: string): boolean {
+	const reportPath = join(runDirOf(contractPath), "report.md")
+	if (!existsSync(reportPath)) return false
+	const verdict = /^Verdict: (\w+)(.*)$/m.exec(readFileSync(reportPath, "utf8"))
+	return verdict?.[1] === "pass" && /scripted reviewer/.test(verdict[2])
 }

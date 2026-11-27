@@ -5,7 +5,8 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { packageGate } from "../src/package/gate.ts"
+import { packageGate, scriptedReview } from "../src/package/gate.ts"
+import { SCRIPTED_BANNER, assemblyOrder } from "../src/package/build.ts"
 import { ROVER_BOARD } from "../src/inference/scripts.ts"
 import type { ContractSnapshot } from "../src/contract/types.ts"
 import { tempDir } from "./helpers.ts"
@@ -32,7 +33,6 @@ test("an unfinished run is refused, each reason named", () => {
 	assert.match(r(FINISHED.replace("Verdict: pass", "Verdict: fail")), /the brief review's verdict is fail/)
 	assert.match(r(FINISHED.replace(/Verdict: .*\n/, "No verdict: the reviewer ended its turn without submitting a review, so it settled.\n")), /no review verdict: the reviewer ended its turn/)
 	assert.match(r(FINISHED.replace(/## Brief review\n\nVerdict: .*\n/, "Brief review: skipped (--no-review).\n")), /the brief review was skipped/)
-	assert.match(r(FINISHED.replace("Verdict: pass", "Verdict: pass (scripted reviewer, not a model verdict)")), /a mock run's scripted one/)
 	assert.match(r(FINISHED, rover(11)), /this contract is revision 11, but the report judged revision 15/)
 })
 
@@ -44,4 +44,14 @@ test("a contract with no run report, or one from contracts/ that isn't the final
 	mkdirSync(join(dir, "contracts"))
 	assert.match(packageGate(join(dir, "contracts", "rev-9.json"), rover(9)).join("\n"), /this contract is revision 9, but the report judged revision 15/)
 	assert.deepEqual(packageGate(join(dir, "contracts", "rev-15.json"), rover(15)), [])
+})
+
+test("a free mock run's scripted pass isn't refused: it's packaged with a banner saying so", () => {
+	const mock = run(FINISHED.replace("Verdict: pass", "Verdict: pass (scripted reviewer, not a model verdict)"))
+	assert.deepEqual(packageGate(mock, rover()), [])
+	assert.equal(scriptedReview(mock), true)
+	assert.equal(scriptedReview(run(FINISHED)), false)
+	assert.ok(assemblyOrder(rover(), [], true).startsWith(`# Assembly order\n\n${SCRIPTED_BANNER}\n`))
+	assert.ok(!assemblyOrder(rover(), []).includes("scripted agents"))
+	assert.match(SCRIPTED_BANNER, /Check the board and parts before ordering/)
 })
