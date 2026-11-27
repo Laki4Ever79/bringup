@@ -32,7 +32,8 @@ await prepareFirmware(root, fw, s)
 const t0 = Date.now()
 // Two images: the firmware as it is, and with its stack guard's interrupt masked (SIM_NO_STACK_GUARD_IRQ, hw_sim.cpp).
 const images: Record<string, string> = {}
-for (const [name, flags] of [["plain", ""], ["stack-guard IRQ masked", "-DSIM_NO_STACK_GUARD_IRQ"]] as const) {
+// The sim build masks it by default now (platformio.ini): "plain" undefines it to show what Windows does without.
+for (const [name, flags] of [["plain", "-USIM_NO_STACK_GUARD_IRQ"], ["stack-guard IRQ masked", ""]] as const) {
 	const build = await run(env.pio, ["run", "-d", fw, "-e", target.simEnv], { timeoutMs: 1_800_000, env: { ...(process.env as Record<string, string>), PLATFORMIO_BUILD_FLAGS: flags } })
 	if (build.code !== 0) throw new Error(`the simulation firmware (${name}) didn't build: ${(build.stdout + build.stderr).slice(-1500)}`)
 	const { image, log } = await mergeFlash(fw, target.simEnv, target.chip)
@@ -61,7 +62,9 @@ for (const [icountName, icount] of VARIANTS) {
 	await new Promise((r) => setTimeout(r, secs * 1000))
 	q.kill()
 	const text = existsSync(uart0) ? readFileSync(uart0, "latin1") : ""
-	const verdict = /ROVER ready/.test(text) ? "BOOTS (ROVER ready)" : /Guru Meditation/.test(text) ? `PANICS (${(/Guru Meditation Error: [^\r\n]*/.exec(text) ?? [""])[0].slice(0, 90)})` : /entry 0x/.test(text) ? "stops after the bootloader" : "no console"
+	// A panic anywhere counts, even after a boot (the plain firmware on Windows reached "ROVER ready", then looped).
+	const panics = (text.match(/Guru Meditation/g) ?? []).length
+	const verdict = panics ? `PANICS x${panics} (${(/Guru Meditation Error: [^\r\n]*/.exec(text) ?? [""])[0].slice(0, 90)})${/ROVER ready/.test(text) ? ", after ROVER ready" : ""}` : /ROVER ready/.test(text) ? "BOOTS (ROVER ready)" : /entry 0x/.test(text) ? "stops after the bootloader" : "no console"
 	say(`- **${name}**: ${verdict}; ${text.length} bytes in ${secs} s${exit ? `; QEMU ${exit}: ${err.trim().split("\n").pop()}` : ""}`)
 	console.log(`--- ${name}: first lines ---\n${text.split(/\r?\n/).slice(0, 25).join("\n")}\n---`)
 }

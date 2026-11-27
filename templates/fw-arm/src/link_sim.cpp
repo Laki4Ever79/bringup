@@ -9,6 +9,15 @@ static uint32_t tick = 0, now = 0;
 
 void link_begin(void) { Serial1.begin(921600); }
 
+// SIM_NO_STACK_GUARD_IRQ (the C3's simulation build only, never the board's): its stack guard's debug-assist interrupt
+// (CPU line 27) masked before loopTask starts; Espressif's Windows QEMU raised it with nothing tripped and the firmware
+// panicked in a loop (MCAUSE 27). As the rover's hw_sim.cpp; Arduino calls initVariant() from initArduino().
+#if defined(SIM_NO_STACK_GUARD_IRQ) && defined(CONFIG_IDF_TARGET_ESP32C3)
+#include "riscv/interrupt.h"
+#include "soc/soc.h"
+extern "C" void initVariant(void) { esprv_int_disable(1u << ETS_ASSIST_DEBUG_INUM); }
+#endif
+
 void link_i2c_write(uint8_t addr, const uint8_t *b, int n) {
 	char line[8 + 3 * 40];
 	int k = snprintf(line, sizeof line, "I %02x", addr);

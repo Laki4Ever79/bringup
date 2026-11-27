@@ -15,9 +15,9 @@ test("each client's user config, per OS", () => {
 	assert.equal(configPath("vscode", "linux", env).key, "servers")
 	assert.equal(configPath("cursor", "darwin", env).path, join("/h", ".cursor", "mcp.json"))
 	assert.equal(configPath("windsurf", "linux", env).path, join("/h", ".codeium", "windsurf", "mcp_config.json"))
-	// Windows: through cmd, except VS Code, which starts npx itself.
+	// Windows: through cmd, VS Code too.
 	assert.deepEqual(entry("cursor", "win32"), { command: "cmd", args: ["/c", "npx", "-y", "bringup-mcp"] })
-	assert.deepEqual(entry("vscode", "win32"), { type: "stdio", command: "npx", args: ["-y", "bringup-mcp"] })
+	assert.deepEqual(entry("vscode", "win32"), { type: "stdio", command: "cmd", args: ["/c", "npx", "-y", "bringup-mcp"] })
 	assert.deepEqual(JSON.parse(snippet("windsurf", "linux")), { mcpServers: { bringup: { command: "npx", args: ["-y", "bringup-mcp"] } } })
 })
 

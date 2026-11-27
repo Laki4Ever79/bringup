@@ -45,8 +45,8 @@ VS Code's `mcp.json`:
 }
 ```
 
-On Windows, Claude Desktop, Cursor and Windsurf start it through `cmd` (they start programs without a shell, and npx is
-`npx.cmd` there): `"command": "cmd", "args": ["/c", "npx", "-y", "bringup-mcp"]`; `add` writes that for you.
+On Windows every client starts it through `cmd` (npx is `npx.cmd` there, which a client that starts programs without a
+shell can't start): `"command": "cmd", "args": ["/c", "npx", "-y", "bringup-mcp"]`; `add` writes that for you.
 
 How these are checked: `add` for each client into a temp home, then the server started from each written entry exactly
 as the client starts it (command and args, no shell), answering the MCP handshake and listing its tools. Done by hand

@@ -13,10 +13,10 @@ export type Client = (typeof CLIENTS)[number]
 
 export const SERVER_NAME = "bringup"
 
-// The command a client starts. Windows: through cmd, since a client that starts programs without a shell can't start
-// npx (npx.cmd there) directly; VS Code starts npx itself.
+// The command a client starts. Windows: through cmd for every client, since one that starts programs without a shell
+// can't start npx (npx.cmd there) directly; the OS smoke test starts each entry that way (VS Code's plain npx didn't).
 export function entry(client: Client, platform: NodeJS.Platform = process.platform): Record<string, unknown> {
-	const win = platform === "win32" && client !== "vscode"
+	const win = platform === "win32"
 	const run = win ? { command: "cmd", args: ["/c", "npx", "-y", "bringup-mcp"] } : { command: "npx", args: ["-y", "bringup-mcp"] }
 	return client === "vscode" ? { type: "stdio", ...run } : run
 }
