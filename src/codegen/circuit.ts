@@ -2412,7 +2412,11 @@ export function boardLayers(s: ContractSnapshot): { layers: 2 | 4; reason: { by:
 
 // The wide rails a 4-layer board carries on its power layer (In2): those over a track reaching a pin (MAX_TRACK_MM), each
 // a region of In2 around its pads and its support parts (plane-regions.ts).
-export const planeRails = (s: ContractSnapshot) => (boardLayers(s).layers === 4 ? [...routedWidths(s, true)].filter(([n, w]) => w > MAX_TRACK_MM && n !== "GND").map(([n]) => n) : [])
+// The rails a 4-layer board carries on In2: every rail wider than the default track, not only those past MAX_TRACK_MM.
+// A rail between the two was routed as a track and widened after, and beside a fine-pitch driver it stayed narrow: the
+// CNC's VMOT and VMOT_SW, 0.35 mm needed, at it on 120 of 166 mm and 142 of 239 mm (rev 9 on 4 layers, 27 Nov 2026).
+// On its own region the plane carries the current (the plane neck check judges it) and the track only reaches the pin.
+export const planeRails = (s: ContractSnapshot) => (boardLayers(s).layers === 4 ? [...routedWidths(s, true)].filter(([n, w]) => w > DEFAULT_TRACE_MM && n !== "GND").map(([n]) => n) : [])
 export function powerPlaneRegions(s: ContractSnapshot, placement: Map<string, Placed> = new Map(placeParts(s).map((b) => [b.ref, b]))): PlaneRegion[] {
 	const o = s.values.outline
 	const nets = planeRails(s)
@@ -3258,10 +3262,12 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		lines.push(`<chip name=${q(p.ref)}${labelsFor(p, footprint)}${mpnOf(p)}${at(placement, p.ref)} footprint=${fp} />`)
 		// A thermal pad the pin list doesn't name (the TMC2209's pin 29, the DRV8833's pin 17: both to GND by their
 		// datasheets) was left without a net: on a 4-layer board ground is stitched to In1, so the pad takes GND and a via,
-		// and the chip's fine-pitch GND pins join it (the CNC's four TMC2209s, 27 Nov 2026: 26 GND pads unjoined). Left
-		// alone on 2 layers, where tscircuit would have to route it from under the package (backlog).
+		// and the chip's fine-pitch GND pins join it (the CNC's four TMC2209s, 27 Nov 2026: 26 GND pads unjoined). On 2
+		// layers it joins the chip's own GND pin, a short trace under the package, so the router never has to bring ground
+		// in from outside it (the rover's DRV8833: pin 17 to pin 13); to the GND net when the chip names no GND pin.
 		const ep = thermalPadPin(footprint, p.pins.length)
-		if (ep !== null && boardLayers(s).layers === 4) lines.push(`<trace name=${q(`${p.ref}_EP_GND`)} from=${q(`.${p.ref} > .pin${ep}`)} to="net.GND" />`)
+		const ownGnd = p.pins.find((x) => x === "GND")
+		if (ep !== null) lines.push(`<trace name=${q(`${p.ref}_EP_GND`)} from=${q(`.${p.ref} > .pin${ep}`)} to=${boardLayers(s).layers === 4 || !ownGnd ? `"net.GND"` : q(`.${p.ref} > .${ownGnd}`)} />`)
 	}
 
 	// The chip's crystal: pin 1 to OSC_IN, pin 3 to OSC_OUT, straight traces (short, no net of their own).
