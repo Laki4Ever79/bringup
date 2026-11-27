@@ -45,7 +45,7 @@ export interface McuProfile {
 	lcsc: string | null
 	kind: "module" | "chip"
 	package: { name: string; footprint: string; bodyMm: { w: number; h: number }; extentMm: { w: number; h: number }; ringMm?: number }
-	board: { supported: boolean; reason?: string }
+	board: { supported: boolean; reason?: string; note?: string }
 	core: string
 	mhz: number
 	flashKb: number

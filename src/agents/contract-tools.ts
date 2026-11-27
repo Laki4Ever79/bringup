@@ -3,6 +3,7 @@ import { completePowerTree } from "../contract/power-auto.ts"
 import { withArmRails } from "../contract/arm-rails.ts"
 import { moveUpMcu } from "../contract/mcu-move.ts"
 import { withRobotImu } from "../contract/imu-auto.ts"
+import { withUsbBridge } from "../contract/usb-bridge-auto.ts"
 import { withDriverOutputs } from "../contract/outputs-auto.ts"
 import { withStatusLed } from "../contract/status-led-auto.ts"
 import { FIELDS, OWNERS, type AgentRole, type ContractSnapshot, type ContractValues, type FieldName } from "../contract/types.ts"
@@ -119,6 +120,15 @@ export function contractTools(role: AgentRole, self: { id: string }): Tool[] {
 					if (i.note) {
 						args = { ...args, value: i.parts as ContractValues[FieldName] }
 						laidOutNote = [laidOutNote, i.note].filter(Boolean).join("; ")
+					}
+				}
+				// An MCU that flashes over UART with no native USB (the ESP32-WROOM-32E) gets its USB-UART bridge and auto-reset
+				// pair on a board with a USB-C, any design (contract/usb-bridge-auto.ts); a switch to a native-USB chip drops them.
+				if (args.field === "parts" && Array.isArray(args.value)) {
+					const u = withUsbBridge(args.value as NonNullable<ContractValues["parts"]>, mcuCatalog())
+					if (u.note) {
+						args = { ...args, value: u.parts as ContractValues[FieldName] }
+						laidOutNote = [laidOutNote, u.note].filter(Boolean).join("; ")
 					}
 				}
 				// A robot's plugs have fixed names: the parts list is renamed to them, and the connectors and pins follow below.

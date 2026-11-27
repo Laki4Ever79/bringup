@@ -18,8 +18,8 @@
 		}
 	},
 	"board": {
-		"supported": false,
-		"reason": "the module's land pattern isn't entered (only the ESP32-C3-MINI-1's is), and with no native USB it needs a USB-UART bridge (CP2102N/CH340) with the EN/GPIO0 auto-reset transistors to flash over USB-C; Bringup's ESP32 firmware template is the C3's (USB Serial/JTAG console, hand-written esp32c3 envs). Pins, chip choice and motion firmware work"
+		"supported": true,
+		"note": "the land pattern from the datasheet's Figure 13 (src/codegen/circuit.ts wroomPads); no native USB, so the board flashes it through a USB-UART bridge (role usb-uart, the CH340C) and the auto-reset pair (role auto-reset, the UMH3N) on EN and GPIO0"
 	},
 	"core": "2× Xtensa LX6 (ESP32-D0WD-V3)",
 	"mhz": 240,

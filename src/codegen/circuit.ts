@@ -330,6 +330,18 @@ function nativeUsbWired(s: ContractSnapshot): boolean {
 
 // The pins the MCU's native USB takes on a board with a USB-C port (D+ and D-): never free for another signal, or the
 // generator leaves USB unwired (generatedUsb) and the one cable no longer programs the board. Empty without either.
+// The USB-UART path of a chip with no native USB that flashes over UART (its profile's programming.method "uart"): the
+// console pins the bridge talks to and the boot strap the auto-reset pair pulls, when the parts list has the bridge.
+export function usbBridge(s: ContractSnapshot): { bridge: Part; autoReset: Part | null; tx: string; rx: string; boot: string | null } | null {
+	const parts = s.values.parts ?? []
+	const mcu = parts.find((p) => p.role === "mcu")
+	const prof = mcu ? profileForPart(mcu) : null
+	const bridge = parts.find((p) => p.role === "usb-uart")
+	if (!mcu || !prof || !bridge || prof.usb || prof.programming?.method !== "uart" || !prof.console) return null
+	const autoReset = parts.find((p) => p.role === "auto-reset") ?? null
+	const boot = autoReset && prof.boot?.pin && mcu.pins.includes(prof.boot.pin) ? prof.boot.pin : null
+	return { bridge, autoReset, tx: prof.console.tx, rx: prof.console.rx, boot }
+}
 export function nativeUsbIndexes(s: ContractSnapshot): number[] {
 	const native = mcuUsbPins((s.values.parts ?? []).find((p) => p.role === "mcu"))
 	return native && usbRef(s) ? [native.dpIndex, native.dmIndex] : []
@@ -395,6 +407,11 @@ registerChipContext(estopSwitchCtx)
 registerChipContext(fixedCtx("enable-gate"))
 registerChipContext(fixedCtx("limit-switch"))
 registerChipContext(fixedCtx("current-sense"))
+// The USB-UART bridge (the CH340C) and its auto-reset pair (the UMH3N) for a chip that flashes over UART: their nets are
+// fixed in their catalog entries (USB_DP/USB_DN, MCU_RXD/MCU_TXD, USB_DTR/USB_RTS, MCU_EN/MCU_BOOT); usbBridge joins the
+// MCU and the USB-C to them.
+registerChipContext(fixedCtx("usb-uart"))
+registerChipContext(fixedCtx("auto-reset"))
 // An arm's servo rail chip: fed by the brick's input, making its rail at the arm's rail voltage.
 registerChipContext((s, part) => {
 	const rail = (armRails(s) ?? []).find((r) => r.supplyRef === part.ref)
@@ -681,9 +698,38 @@ const s3Pins = (): Record<string, number> => {
 	if (!prof) return {}
 	return Object.fromEntries([...prof.pins.map((x) => [x.name, +x.pads[0]] as const), ...prof.power.map((x) => [x.name, +x.pads[0]] as const)])
 }
+// ESP32-WROOM-32E (datasheet v2.1: Table 3 pin definitions, Figure 13 recommended land pattern, Figure 10 dimensions).
+// Origin at the module centre, antenna toward +y. 18 × 25.5 mm; 38 pads of 1.5 × 0.9 mm at 1.27 mm, each reaching 0.5 mm
+// past the module's edge: left 1-14 top down and right 25-38 bottom up (columns 17.5 mm apart, centre to centre, pad 1
+// 7.49 mm below the antenna end), bottom 15-24 left to right (11.43 mm end to end); the antenna area is the top 6.19 mm.
+// Pad 39 is the 3.7 mm ground pad (nine squares with vias in the figure, one pad here), its offset read off the mirrored
+// bottom view: approximate (see catalog/README.md), like the C3's and S3's.
+const WROOM_BODY = { w: 18, h: 25.5 }
+const WROOM_PAD1_Y = WROOM_BODY.h / 2 - 7.49
+function wroomPads(): { pin: number; x: number; y: number; w: number; h: number }[] {
+	const pads = []
+	for (let k = 0; k < 14; k++) pads.push({ pin: 1 + k, x: -8.75, y: +(WROOM_PAD1_Y - 1.27 * k).toFixed(3), w: 1.5, h: 0.9 }) // left, top down
+	for (let k = 0; k < 10; k++) pads.push({ pin: 15 + k, x: +(-5.715 + 1.27 * k).toFixed(3), y: -12.5, w: 0.9, h: 1.5 }) // bottom, left to right
+	for (let k = 0; k < 14; k++) pads.push({ pin: 25 + k, x: 8.75, y: +(WROOM_PAD1_Y - 1.27 * (13 - k)).toFixed(3), w: 1.5, h: 0.9 }) // right, bottom up
+	pads.push({ pin: 39, x: 0.56, y: -3.4, w: 3.7, h: 3.7 }) // ground pad
+	return pads
+}
+// The WROOM's pins by pad, from its profile (catalog/mcu/esp32-wroom-32e.json): each GPIO's pad (the flash's GPIO6-11
+// have none), 3V3 and EN, and its four ground pads as GND, GND_2, GND_3, GND_4 (the catalog entry grounds the last three).
+const wroomPins = (): Record<string, number> => {
+	const prof = loadProfiles().find((x) => x.id === "esp32-wroom-32e")
+	if (!prof) return {}
+	const gnd = prof.power.find((x) => x.name === "GND")?.pads ?? []
+	return Object.fromEntries([
+		...prof.pins.filter((x) => x.pads.length).map((x) => [x.name, +x.pads[0]] as const),
+		...prof.power.filter((x) => x.name === "3V3" || x.name === "EN").map((x) => [x.name, +x.pads[0]] as const),
+		...gnd.map((pad, i) => [i ? `GND_${i + 1}` : "GND", +pad] as const),
+	])
+}
 export const MODULES: Record<string, RadioModule> = {
 	[MODULE_FOOTPRINT]: { footprint: MODULE_FOOTPRINT, body: MODULE_BODY, padAreaTop: MODULE_PAD_AREA_TOP, pins: MODULE_PINS, pads: modulePads },
 	esp32_s3_mini_1: { footprint: "esp32_s3_mini_1", body: S3_BODY, padAreaTop: +(S3_TOP_ROW + 0.4).toFixed(2), get pins() { return s3Pins() }, pads: s3Pads },
+	esp32_wroom_32e: { footprint: "esp32_wroom_32e", body: WROOM_BODY, padAreaTop: +(WROOM_BODY.h / 2 - 6.19).toFixed(2), get pins() { return wroomPins() }, pads: wroomPads },
 }
 // The radio module a part is, by its footprint; null for any other part.
 export function moduleOf(p: Part | undefined): RadioModule | null {
@@ -884,6 +930,8 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// sma its courtyard (7 × 3.5); the KF128R terminal 11.16 mm along its pin row (tscircuit's courtyard) by 8 mm, the
 	// block's depth an ESTIMATE (its LCSC drawing didn't download).
 	soic8: [5.8, 5.4],
+	// SOIC-16 (the CH340C USB-UART bridge): soic8's width, eight pins a side at 1.27 mm (9.9 mm body) + 0.25 mm an end.
+	soic16: [5.8, 10.4],
 	sma: [7, 3.5],
 	"pinrow2_p5.08mm": [11.16, 8],
 	// 2512 (the spindle shunt): tscircuit's courtyard, measured 27 Nov 2026.
@@ -915,7 +963,7 @@ const FOOTPRINT_SIZE: Record<string, [number, number]> = {
 	// A 3-pin 2.54 mm header (a servo's plug).
 	pinrow3: [8.6, 3.6],
 	// SC-70-6 (the LM66100 ideal diode): about 2.8 × 2.6 mm with pads (an estimate of the footprinter's sot363).
-	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [DDA_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6], [XT60_FOOTPRINT]: [9.4, 17], [DC091_FOOTPRINT]: [13.6, 10.6],
+	sot363: [2.8, 2.6], [MODULE_FOOTPRINT]: [MODULE_BODY.w, MODULE_BODY.h], esp32_s3_mini_1: [S3_BODY.w, S3_BODY.h], esp32_wroom_32e: [WROOM_BODY.w + 1, WROOM_BODY.h + 0.5], [IMU_FOOTPRINT]: [3.6, 3.1], nrs4018: [5.6, 4.4], spm7054: [8.8, 7.6], [SO8E_FOOTPRINT]: [7.2, 5.4], [DDA_FOOTPRINT]: [7.2, 5.4], [SY8368_FOOTPRINT]: [3.9, 3.6], [XT60_FOOTPRINT]: [9.4, 17], [DC091_FOOTPRINT]: [13.6, 10.6],
 	// The S2B-PH-K housing's courtyard: 6.9 × 5.5 mm, not centred on the part (FOOTPRINT_OFFSET).
 	jst2_ph: [6.9, 5.5],
 	// JST XH 4-pin vertical (a CNC's stepper plug, B4B-XH-A): tscircuit's own courtyard, 13.4 × 6.75 mm, 0.525 mm behind
@@ -2707,6 +2755,16 @@ export function generatedNets(s: ContractSnapshot): Map<string, string[]> {
 			for (const pad of USBC_PADS.DN) join("USB_DN", usb, pad)
 			join("USB_DP", mcu.ref, native.dp)
 			join("USB_DN", mcu.ref, native.dm)
+		}
+		// A chip that flashes over UART (the ESP32-WROOM-32E): D+/D- to the USB-UART bridge (its catalog nets), the bridge's
+		// TXD/RXD to the MCU's console RX/TX, the auto-reset pair to EN (MCU_EN, above) and the boot strap.
+		const bridge = mcu && !native ? usbBridge(s) : null
+		if (bridge) {
+			for (const pad of USBC_PADS.DP) join("USB_DP", usb, pad)
+			for (const pad of USBC_PADS.DN) join("USB_DN", usb, pad)
+			join("MCU_TXD", mcu!.ref, bridge.tx)
+			join("MCU_RXD", mcu!.ref, bridge.rx)
+			if (bridge.boot) join("MCU_BOOT", mcu!.ref, bridge.boot)
 		}
 	}
 
