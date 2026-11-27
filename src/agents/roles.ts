@@ -144,7 +144,8 @@ export function createArchitectAgent(opts: { mock: boolean }): Agent {
 				processor: {
 					apply: ({ event, participant }) => {
 						const message = (event.payload as { message: string }).message
-						if (!briefSeen) {
+						// A continued design (bringup continue) starts with its contract: every message is then a change request.
+						if (!briefSeen && state().contract.revision === 0) {
 							briefSeen = true
 							startTurn(participant as Agent, `Brief from the engineer:\n${message}`, { kind: "brief" })
 							return
@@ -288,7 +289,7 @@ function engineerRequests(guidance: string, role?: AgentRole): SituationHandler 
 		specification: when(({ event }) => isEvent(event, "message.sent" as never) && state().getParticipant(event.producerId)?.getManifest().name === "engineer"),
 		processor: {
 			apply: ({ event, participant }) => {
-				if (!briefSeen) {
+				if (!briefSeen && state().contract.revision === 0) {
 					briefSeen = true
 					return
 				}

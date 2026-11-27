@@ -384,7 +384,7 @@ test("bin/bringup-mcp.js speaks MCP on stdio: handshake, every tool listed, safe
 	try {
 		assert.equal(client.getServerVersion()?.name, "bringup")
 		const names = (await client.listTools()).tools.map((t) => t.name).sort()
-		assert.deepEqual(names, ["approve_plan", "design_status", "export_package", "get_report", "list_events", "list_part_refs", "list_starters", "plan_design", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
+		assert.deepEqual(names, ["approve_plan", "continue_design", "design_status", "export_package", "get_report", "list_events", "list_part_refs", "list_starters", "plan_design", "read_contract", "request_change", "run_summary", "start_design", "start_system", "stop_design"])
 		const refused: any = await client.callTool({ name: "start_design", arguments: { brief: "x", mock: false } })
 		assert.equal(refused.isError, true)
 	} finally {
@@ -566,5 +566,37 @@ test("installTools: the missing domains install first (the call returns at once)
 		stub.release()
 	} finally {
 		await c.close()
+	}
+})
+
+test("continue_design starts a new run from an ended one's contract (latest or a revision); real models need the plan gate", async () => {
+	const outRoot = tempDir()
+	const old = join(outRoot, "old-run")
+	mkdirSync(join(old, "contracts"), { recursive: true })
+	writeFileSync(join(old, "trace.jsonl"), trace.map((l) => JSON.stringify(l) + "\n").join(""))
+	writeFileSync(join(old, "brief.md"), "BLE temperature logger\n")
+	writeFileSync(join(old, "contract.json"), JSON.stringify(fixtureContract()))
+	writeFileSync(join(old, "contracts", "rev-2.json"), JSON.stringify({ ...fixtureContract(), revision: 2 }))
+	const stub = stubRun()
+	const mcp = await connect(stub.launch, outRoot)
+	try {
+		const res = (await mcp.call("continue_design", { runId: "old-run" })).json()
+		assert.equal(res.continuedFrom, "old-run")
+		assert.equal(res.mock, true)
+		assert.equal(res.stay, true)
+		const args = stub.calls.at(-1)!
+		assert.equal(args.briefPath, "continue")
+		assert.deepEqual(args.extraArgs?.slice(0, 2), ["--from", old])
+		assert.ok(args.extraArgs?.includes("--stay"))
+		assert.notEqual(args.outDir, old)
+		const branched = (await mcp.call("continue_design", { runId: "old-run", revision: 2 })).json()
+		assert.equal(branched.revision, 2)
+		assert.deepEqual(stub.calls.at(-1)!.extraArgs?.slice(2, 4), ["--rev", "2"])
+		assert.match((await mcp.call("continue_design", { runId: "old-run", revision: 9 })).text, /no revision 9/)
+		const paid = await mcp.call("continue_design", { runId: "old-run", mock: false })
+		assert.equal(paid.isError, true)
+		stub.release()
+	} finally {
+		await mcp.close()
 	}
 })

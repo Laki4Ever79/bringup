@@ -303,7 +303,13 @@ export function sizeReasonHolds(s: ContractSnapshot, r: SizeReason | undefined):
 	if (r.kind === "routing") return routingFailures(s).length > 0
 	if (r.kind !== "engineer-size") return true
 	const size = s.values.requirements?.size
-	return size ? size.exact : !LIMIT_WORDS.test(r.detail)
+	if (size?.exact) return true
+	// The brief's own "about" size is a limit; a size the engineer asked for since (a change request, "make it 50 mm
+	// wide") is not that size, and holds unless its own words make it a limit too (27 Nov 2026: a 50 mm request was
+	// compacted straight back to the 36 mm smallest board because the brief said "about 50 × 30 mm").
+	const o = s.values.outline
+	const briefs = size && o && o.widthMm === size.widthMm && o.heightMm === size.heightMm
+	return !briefs && !LIMIT_WORDS.test(r.detail)
 }
 
 // quick (the board page, a check per move): only whether everything still has a spot. The smallest-board search, a
@@ -350,9 +356,10 @@ export function spaceChecks(s: ContractSnapshot, opts: { quick?: boolean } = {})
 				affects: ["architect"],
 			})
 	}
-	// Bigger than the engineer's limit, in either orientation, unless a failed build needs the room.
+	// Bigger than the engineer's limit, in either orientation, unless a failed build needs the room or the engineer has
+	// since asked for this size ("make it 60 mm wide" after the brief's "about 50 × 30 mm": the later word wins).
 	const size = s.values.requirements?.size
-	if (o && size && !size.exact && !(o.sizeReason?.kind === "routing" && sizeReasonHolds(s, o.sizeReason))) {
+	if (o && size && !size.exact && !((o.sizeReason?.kind === "routing" || o.sizeReason?.kind === "engineer-size") && sizeReasonHolds(s, o.sizeReason))) {
 		const fits = (w: number, h: number) => o.widthMm <= w + 1e-9 && o.heightMm <= h + 1e-9
 		if (!fits(size.widthMm, size.heightMm) && !fits(size.heightMm, size.widthMm))
 			v.push({

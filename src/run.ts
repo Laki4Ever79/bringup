@@ -5,7 +5,7 @@ import { modelLimitOf } from "./inference/limit.ts"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, basename } from "node:path"
 import { fileURLToPath } from "node:url"
-import type { FieldName } from "./contract/types.ts"
+import { OWNERS, type ContractSnapshot, type FieldName } from "./contract/types.ts"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
 import { createBoardBuilder, createArmBuilder, createArmSimBuilder, createCncSimBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
@@ -83,6 +83,10 @@ export interface RunOptions {
 	// A git working copy the engineer owns (runner/linked.ts): each settled revision is committed there, and edits to
 	// it sync back. Without it, a staying run can still be linked later with `bringup link <run> <dir>`.
 	link?: string
+	// Continue a design (bringup continue, continue_design): start from this contract, from the run in `from`, instead of
+	// drafting from the brief. The builders rebuild from it, the checks run, and the design settles again before taking
+	// change requests.
+	seed?: { contract: ContractSnapshot; from: string }
 	// Injected fetch for bom.json's live stock lookups (tests).
 	bomFetch?: typeof fetch
 }
@@ -133,6 +137,10 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	state.contract.setCatalog(loadCatalog(ROOT))
 	state.review.enabled = opts.review ?? true
 	state.review.maxRounds = opts.maxReviewRounds ?? MAX_REVIEW_ROUNDS
+	if (opts.seed) {
+		state.contract.restore(opts.seed.contract)
+		writeFileSync(join(opts.outDir, "continued-from.json"), JSON.stringify({ from: opts.seed.from, revision: opts.seed.contract.revision }, null, 2))
+	}
 	// The provider's limit stops the run at once, with the reason, instead of letting the silenced agents "settle".
 	let stopOnLimit: (s: Settlement) => void = () => {}
 	const limitHit = new Promise<Settlement>((r) => (stopOnLimit = r))
@@ -257,7 +265,14 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 	joinRuntime(steerDesk)
 
 	emit(makeEvent("run.started", engineer.getId(), { review: state.review.enabled, engineerApproval: state.engineerApproval, noHardware: opts.noHardware ?? false, bench: Boolean(opts.bench), stay: Boolean(opts.stay), mock: opts.mock }), engineer.getId())
-	sendMessage(opts.brief, engineer.getId())
+	if (opts.seed) {
+		// The continued design as its fields' changes, so every builder builds it and the checks look at it; no agent is
+		// asked to draft it again.
+		const s = state.contract.snapshot()
+		const reason = `continued from ${opts.seed.from} at revision ${s.revision}`
+		for (const field of Object.keys(s.values) as FieldName[])
+			emit(makeEvent("contract.changed", engineer.getId(), { field, version: s.versions[field], revision: s.revision, by: OWNERS[field], reason, after: s.values[field] }), engineer.getId())
+	} else sendMessage(opts.brief, engineer.getId())
 	// Mid-run change requests (tsx src/request.ts, MCP request_change) arrive as further engineer messages.
 	let requestCount = 0
 	const requests = watchRequests(opts.outDir, (r) => {

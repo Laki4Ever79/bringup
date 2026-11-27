@@ -1,4 +1,5 @@
 import { providerProblem } from "../inference/providers.ts"
+import { continueSeed } from "../runner/continue.ts"
 import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
@@ -282,6 +283,41 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			const extraArgs = [...(stay ? ["--stay"] : []), ...hw.flags, ...(mock === false && planId ? ["--plan", planId] : [])]
 			track(runId, deps.launch({ briefPath, mock: mock ?? true, outDir, ...(extraArgs.length ? { extraArgs } : {}) }))
 			return ok({ runId, outDir, mock: mock ?? true, stay: Boolean(stay), hardware: hw.said })
+		},
+	)
+
+	server.registerTool(
+		"continue_design",
+		{
+			description: "Continue a design whose run has ended: a new run starts from its contract (the latest, or `revision` to branch from an earlier one), settles as it was, then takes request_change. Returns the new runId; the ended run is kept as it is.",
+			inputSchema: {
+				runId: z.string().describe("The ended run to continue"),
+				revision: z.number().int().positive().optional().describe("Branch from this revision (its contracts/rev-N.json) instead of the latest"),
+				mock: z.boolean().optional().describe("Scripted agents: free, no API key. Default true."),
+				realModels: z.boolean().optional().describe("Required with mock: false. Real models cost money or quota; the server refuses without it."),
+				planId: z.string().optional().describe("Required with mock: false: a plan made by plan_design for this design's brief and approved by your user through approve_plan."),
+				stay: z.boolean().optional().describe("Keep the run up for request_change after it settles; end it with stop_design. Default true."),
+				hardware: HARDWARE,
+			},
+		},
+		async ({ runId: fromId, revision, mock, realModels, planId, stay, hardware }) => {
+			const from = await runDir(fromId)
+			if ("error" in from) return fail(from.error)
+			const seed = continueSeed(from.dir, revision)
+			if ("error" in seed) return fail(seed.error)
+			const brief = readFileSync(join(from.dir, "brief.md"), "utf8")
+			const refused = paidRunRefusal(mock, realModels, deps.env ?? process.env) ?? (mock === false ? paidStartRefusal(planId, brief) : null)
+			if (refused) return fail(refused)
+			const runId = newRunId()
+			const outDir = join(deps.outRoot, runId)
+			mkdirSync(outDir, { recursive: true })
+			const keep = stay ?? true
+			runs.set(runId, { status: "running" })
+			if (keep) stays.add(runId)
+			const hw = await hardwareFlags(hardware)
+			const extraArgs = ["--from", from.dir, ...(revision ? ["--rev", String(revision)] : []), ...(keep ? ["--stay"] : []), ...hw.flags, ...(mock === false && planId ? ["--plan", planId] : [])]
+			track(runId, deps.launch({ briefPath: "continue", mock: mock ?? true, outDir, extraArgs }))
+			return ok({ runId, outDir, continuedFrom: fromId, revision: seed.contract.revision, mock: mock ?? true, stay: keep, hardware: hw.said })
 		},
 	)
 

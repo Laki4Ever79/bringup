@@ -94,6 +94,7 @@ Connect the machine to Bringup Studio, and every run the MCP starts streams ther
 | `list_part_refs` | The printed features a change can name: each opening, hole, tab and standoff of the case; each standoff, motor mount, rail and bracket of the chassis. Each one comes with its place and the line of code that makes it |
 | `request_change` | Change one thing in a running design ("make it 50 mm wide"). `ref` names the printed feature the change is about; `board` picks a system's board |
 | `stop_design` | End a run that stays up |
+| `continue_design` | Continue a design whose run has ended: a new run starts from its contract (the latest, or `revision` to branch from an earlier one), settles as it was, then takes `request_change`. Mock by default; a real-model continue needs `realModels` and an approved plan, like `start_design` |
 | `export_package` | Write the manufacturing package (fabrication files, BOM, firmware, printed parts). Refused for an unfinished design unless `force` is set. One board of a system at a time (`board`). Needs the toolchain |
 
 For a system run, `read_contract`, `get_report`, `list_events`, `list_part_refs`, `request_change` and `export_package`
@@ -119,3 +120,19 @@ The order:
 3. `mcp-publisher publish`.
 
 Both registries publish under the maintainer's own accounts.
+
+## Continuing a design
+
+A design's run ends when it settles (unless it was started with `stay`), and an ended run takes no changes. To change it
+later, continue it: `continue_design` (MCP), `npx bringup continue <runDir> [--rev N]` (CLI), or
+`POST /api/runs/<id>/continue {mock, hardware, revision?}` (the dashboard hub).
+
+- A continued design gets a **new run folder** with `continued-from.json` (`{from, revision}`) pointing back. The ended
+  run is never written to, so its history stays as it was, and every run folder is still one run with one trace.
+- It starts from the ended run's `contract.json`, or from `contracts/rev-N.json` with `--rev N`/`revision` ("branch
+  from revision N").
+- No agent drafts it again. The builders rebuild the board, case and firmware from that contract, the checks run, and
+  the design settles at the same revision before it takes change requests. The rebuild costs one build of each part;
+  the ended run's files are not reused yet.
+- It stays up for `request_change` until `stop_design` (or Ctrl-C), unless the CLI got scripted `--change` requests.
+

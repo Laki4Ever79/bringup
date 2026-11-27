@@ -82,6 +82,17 @@ export class DesignContract {
 		return s === undefined ? undefined : structuredClone(s)
 	}
 
+	// A design continued from an ended run (bringup continue, continue_design): the contract as that run left it, or as
+	// it was at an earlier revision. Revisions go on from there; snapshotAt has only this one before them.
+	restore(s: ContractSnapshot): void {
+		this.values = structuredClone(s.values)
+		this.versions = { ...this.versions, ...structuredClone(s.versions) }
+		this.rev = s.revision
+		this.amendedFrom = {}
+		this.history = []
+		this.history[s.revision - 1] = structuredClone(s)
+	}
+
 	snapshot(): ContractSnapshot {
 		return structuredClone({ revision: this.rev, values: this.values, versions: this.versions })
 	}

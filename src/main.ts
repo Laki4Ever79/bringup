@@ -18,6 +18,8 @@ import { simulateFirmware } from "./tools/wokwi.ts"
 import { ROOT, runDesign } from "./run.ts"
 import { driftStatusLines, readDrift } from "./runner/drift.ts"
 import { linkedStatusLines, linkRun } from "./runner/linked.ts"
+import { continueSeed } from "./runner/continue.ts"
+import type { ContractSnapshot } from "./contract/types.ts"
 import { describeEnv, detectEnvironment, type Env } from "./tools/env.ts"
 import { prepareToolchain } from "./tools/toolchain.ts"
 import { openBench } from "./bench/open.ts"
@@ -35,7 +37,7 @@ function revisionEnv(runDir: string, revDir: string, purpose: FirmwarePurpose = 
 	return envFor(mcuProfileOf(c?.values?.parts), purpose)
 }
 
-const USAGE = "usage: npm run bringup -- status <runDir> | bench-log <runDir> <serial log> | bench-stream <runDir> <device> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-scorecard] [--stub-missing] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud] [--offline] | login [--url <studio>] | logout"
+const USAGE = "usage: npm run bringup -- status <runDir> | continue <runDir> [--rev N] [--mock] | bench-log <runDir> <serial log> | bench-stream <runDir> <device> | package <contract.json> <outDir> | link <runDir> <dir> | simulate <runDir> | verify-model <modelDir> <contract.json> [--firmware <dir> [--device]] | collect-firmware <runDir> | <brief.md> [--mock] [--no-hardware] [--no-scorecard] [--stub-missing] [--docker-toolchain] [--no-review] [--engineer-approval] [--review-rounds N] [--max-revisions N] [--out <dir>] [--bench [real|fake|replay]] [--bench-replay <bench.jsonl>] [--bench-no-meter] [--bench-no-imu] [--change <request>]... [--change-delay <s>] [--stay] [--link <dir>] [--no-cloud] [--offline] | login [--url <studio>] | logout"
 
 const BENCH_SOURCES = ["real", "fake", "replay"] as const
 
@@ -358,6 +360,26 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 		console.log(linkRun(resolve(run), resolve(to), readDrift(run).live))
 		return 0
 	}
+	// `bringup continue <run> [--rev N] [run flags]`: a new run that starts from that design's contract (its latest, or
+	// revision N, "branch from revision N"), stays up and takes change requests (src/runner/continue.ts).
+	let seed: { contract: ContractSnapshot; from: string } | undefined
+	if (argv[0] === "continue") {
+		// The run folder: `continue <runDir>`, or `--from <runDir>` (how the MCP and the hub launch it).
+		const fromAt = argv.indexOf("--from")
+		const named = fromAt >= 0 ? argv[fromAt + 1] : argv[1] && !argv[1].startsWith("--") ? argv[1] : undefined
+		const from = named ? resolve(named) : ""
+		const revAt = argv.indexOf("--rev")
+		const rev = revAt >= 0 ? Number(argv[revAt + 1]) : undefined
+		const loaded = from ? continueSeed(from, rev) : { error: "name the run folder to continue" }
+		if ("error" in loaded) {
+			console.error(`bringup continue: ${loaded.error}\nusage: bringup continue <runDir> [--rev N] [--mock] [--out <dir>] [run flags]`)
+			return 1
+		}
+		seed = loaded
+		const rest = argv.slice(1).filter((a, i, all) => a !== named && !["--rev", "--from"].includes(a) && !["--rev", "--from"].includes(all[i - 1]))
+		// It stays up for change requests, unless they're scripted (--change), which end it once they've settled.
+		argv = [join(from, "brief.md"), ...rest, ...(rest.includes("--stay") || rest.includes("--change") ? [] : ["--stay"])]
+	}
 	const args = parseArgs(argv)
 	if ("error" in args) {
 		console.error(`bringup: ${args.error}\n${USAGE}`)
@@ -427,7 +449,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	// connector never fails the run: Studio down only delays what it shows.
 	const studio = studioConnector(outDir, basename(outDir), { offline, token: readToken(), log: (m) => console.warn(`bringup: ${m}`) })
 	if (studio) console.log(`bringup: streaming to Bringup Studio (${readToken()!.url}); --offline to keep this run local`)
-	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, ...(args.noScorecard ? { noScorecard: true } : {}), ...(args.stubMissing ? { stubMissing: true } : {}), review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, ...(args.maxRevisions ? { maxRevisions: args.maxRevisions } : {}), bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}) })
+	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, ...(args.noScorecard ? { noScorecard: true } : {}), ...(args.stubMissing ? { stubMissing: true } : {}), review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, ...(args.maxRevisions ? { maxRevisions: args.maxRevisions } : {}), bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}), ...(seed ? { seed } : {}) })
 	await studio?.stop()
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)${result.held?.length ? `, held by ${result.held.length} more (report: "Held by")` : ""}\nreport: ${result.reportPath}`)
 	// What Bringup added without being asked, in one line each; the report's "Added for you" says how each shows and
