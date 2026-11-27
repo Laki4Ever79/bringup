@@ -12,8 +12,9 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, wr
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { BIN, VENV, bringupHome } from "../tools/env.ts"
+import { QEMU_BINS } from "../tools/qemu.ts"
 
-export type Domain = "board" | "case" | "firmware"
+export type Domain = "board" | "case" | "firmware" | "sim"
 export interface DomainInfo {
 	what: string
 	sizeMb: number
@@ -29,6 +30,10 @@ export const DOMAINS: Record<Domain, DomainInfo> = {
 	case: { what: "Python 3.12 and build123d 0.13, pinned (the CAD kernel for cases, chassis and printed parts), through uv", sizeMb: 945, seconds: 75, gives: "the case or chassis as STEP and STL, and the robot's assembly pictures", needs: "the system's OpenGL library (libGL.so.1): on a desktop it's there; on a minimal Linux, `sudo apt install libgl1`" },
 	// PlatformIO itself measured 122 MB with its Python, 11 s; the chip's platform and compiler it fetches on the first
 	// firmware build are not counted (about 1 GB for the ESP32 family: an ESTIMATE, not measured on the clean container).
+	// MuJoCo's wheel and Espressif's QEMU for this OS (the two machines: riscv32 for the ESP32-C3, xtensa for the ESP32 and
+	// S3): a robot's firmware runs in QEMU, driving its MuJoCo model over a course (src/tools/drive.ts). Sizes: the
+	// release's tarballs (Linux 32 MB, macOS 8 MB, Windows 74 MB) and MuJoCo's wheel; an ESTIMATE, not measured clean.
+	sim: { what: "MuJoCo 3.17 and Espressif's QEMU 9.2.2, pinned (a robot's firmware driving its physics model)", sizeMb: 180, seconds: 40, gives: "a robot's drive proven in simulation: its own firmware in QEMU driving the MuJoCo model", needs: "Homebrew's libraries for QEMU on macOS: `brew install libgcrypt glib pixman sdl2 libslirp`" },
 	firmware: { what: "PlatformIO 6.2, pinned (the firmware's build tool; installing it takes seconds). The first firmware build then downloads the chip's platform and compiler, about 1 GB more (an estimate), which made that first build take 2.5-3 min on GitHub's runners", sizeMb: 125, seconds: 15, gives: "firmware built against the board's real pin map" },
 }
 
@@ -95,6 +100,70 @@ async function ensureUv(home: string, d: Required<InstallDeps>): Promise<string>
 	return bin
 }
 
+// Espressif's QEMU, one release for every OS, each tarball checked against the release's own checksum file.
+const QEMU_TAG = "esp-develop-9.2.2-20260417"
+const QEMU_SHA256: Record<string, string> = {
+	"riscv32-x86_64-linux-gnu": "547f03e04701a92cbb699f7f7d015adc1f5b5ef93cbb94c0dd9b7107e2d84e77",
+	"xtensa-x86_64-linux-gnu": "0eecb2a34a5586c0e59110f77b9343b7b336e82fdb0e1a30e1dc1bab8a547e35",
+	"riscv32-aarch64-apple-darwin": "67bff66ff7158f272ce167fc211c0f8f4c1a79b6f6174350678a6d5035644b30",
+	"xtensa-aarch64-apple-darwin": "bb8c15810565d3df1665dc34962430885e11bc95575b228fb44698146be1e9d6",
+	"riscv32-x86_64-apple-darwin": "a47c38c6e2eb9f5028eda9585dce999ce02b8983a2cdf71c48cfb10a14ae25fe",
+	"xtensa-x86_64-apple-darwin": "ae8170fe46bcdfa54a7c0d7afcdb7a066711991be680f72ff7bbc6c4ae3ad88f",
+	"riscv32-x86_64-w64-mingw32": "697aa4800a1f52be0b1693b30e22a684f7ea93c46c489e619384cae7b0e9b87b",
+	"xtensa-x86_64-w64-mingw32": "3c483d77f5350a568df1faf4d8dbc82c95d6bc2b826d0d4be910485e0a68ca2a",
+}
+const qemuHost = (): string | null => {
+	if (process.platform === "linux" && process.arch === "x64") return "x86_64-linux-gnu"
+	if (process.platform === "darwin") return process.arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin"
+	if (process.platform === "win32" && process.arch === "x64") return "x86_64-w64-mingw32"
+	return null
+}
+// Linux's QEMU links libslirp, which a desktop rarely has: Ubuntu 24.04's build (the one tested), from its .deb.
+const SLIRP_DEB = "http://archive.ubuntu.com/ubuntu/pool/main/libs/libslirp/libslirp0_4.7.0-1ubuntu3.1_amd64.deb"
+const SLIRP_DEB_SHA256 = "4efa2d1c509de4d10fe965e86a3d864bf542996caf476d9111fd882c73857164"
+
+async function fetchChecked(url: string, sha: string, d: Required<InstallDeps>): Promise<Buffer> {
+	const res = await d.fetch(url)
+	if (!res.ok) throw new Error(`download failed (HTTP ${res.status}): ${url}`)
+	const b = Buffer.from(await res.arrayBuffer())
+	const sum = createHash("sha256").update(b).digest("hex")
+	if (sum !== sha) throw new Error(`${url.split("/").pop()}'s checksum is ${sum}, not the pinned ${sha}: not installed`)
+	return b
+}
+
+async function installQemu(home: string, d: Required<InstallDeps>): Promise<void> {
+	const host = qemuHost()
+	if (!host) throw new Error(`Espressif has no QEMU build for ${process.platform}-${process.arch}`)
+	const tools = join(home, "tools")
+	mkdirSync(tools, { recursive: true })
+	for (const arch of ["riscv32", "xtensa"]) {
+		if (existsSync(join(home, QEMU_BINS[arch as "riscv32" | "xtensa"]))) continue
+		const name = `qemu-${arch}-softmmu-esp_develop_9.2.2_20260417-${host}.tar.xz`
+		d.log(`sim: QEMU ${arch} (${name})`)
+		const archive = join(tools, name)
+		writeFileSync(archive, await fetchChecked(`https://github.com/espressif/qemu/releases/download/${QEMU_TAG}/${name}`, QEMU_SHA256[`${arch}-${host}`], d))
+		// Each unpacks to qemu/ (bin/, share/); Windows 10's tar.exe reads .tar.xz too.
+		const code = await d.exec("tar", ["xf", archive, "-C", tools])
+		rmSync(archive)
+		if (code !== 0) throw new Error(`couldn't unpack ${name}`)
+	}
+	if (process.platform === "linux" && !existsSync(join(tools, "qemu", "lib", "libslirp.so.0"))) {
+		// The .deb's data, without dpkg or root: ar and tar, as `dpkg -x` does.
+		const tmp = join(tools, "slirp-tmp")
+		mkdirSync(tmp, { recursive: true })
+		writeFileSync(join(tmp, "s.deb"), await fetchChecked(SLIRP_DEB, SLIRP_DEB_SHA256, d))
+		const unpacked = (await d.exec("dpkg-deb", ["-x", "s.deb", "."], { cwd: tmp })) === 0 || ((await d.exec("ar", ["x", "s.deb"], { cwd: tmp })) === 0 && (await d.exec("tar", ["xf", "data.tar.zst"], { cwd: tmp })) === 0)
+		const lib = join(tmp, "usr", "lib", "x86_64-linux-gnu")
+		if (!unpacked || !existsSync(lib)) {
+			rmSync(tmp, { recursive: true, force: true })
+			throw new Error("couldn't unpack libslirp's .deb: it needs dpkg-deb, or ar and a tar that reads zstd")
+		}
+		mkdirSync(join(tools, "qemu", "lib"), { recursive: true })
+		for (const f of readdirSync(lib).filter((f) => f.startsWith("libslirp.so.0"))) copyFileSync(join(lib, f), join(tools, "qemu", "lib", f))
+		rmSync(tmp, { recursive: true, force: true })
+	}
+}
+
 // Installs one domain into the tools home. Idempotent: an installed domain is left as it is.
 export async function installDomain(domain: Domain, deps: InstallDeps = {}): Promise<{ installed: boolean; note: string }> {
 	const d: Required<InstallDeps> = { home: deps.home ?? bringupHome(), log: deps.log ?? ((m) => console.error(m)), exec: deps.exec ?? execDefault, fetch: deps.fetch ?? fetch }
@@ -119,6 +188,17 @@ export async function installDomain(domain: Domain, deps: InstallDeps = {}): Pro
 		d.log(`python 3.12: creating ${venv}`)
 		if ((await d.exec(uv, ["venv", "-q", "--python", "3.12", venv])) !== 0) throw new Error("couldn't create the Python environment")
 	}
+	if (domain === "sim") {
+		const hasMujoco = (await d.exec(python, ["-c", "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('mujoco') else 1)"])) === 0
+		const slirp = process.platform !== "linux" || existsSync(join(home, "tools", "qemu", "lib", "libslirp.so.0"))
+		if (hasMujoco && slirp && existsSync(join(home, QEMU_BINS.riscv32)) && existsSync(join(home, QEMU_BINS.xtensa))) return { installed: false, note: "sim tools already installed" }
+		d.log(`sim: ${DOMAINS.sim.what} into ${home}`)
+		if (!hasMujoco && (await d.exec(uv, ["pip", "install", "-q", "--python", python, "mujoco==3.17.0"])) !== 0) throw new Error("MuJoCo didn't install")
+		await installQemu(home, d)
+		const qemu = join(home, QEMU_BINS.riscv32)
+		const runs = (await d.exec(qemu, ["--version"], { env: { LD_LIBRARY_PATH: join(home, "tools", "qemu", "lib") } })) === 0
+		return { installed: true, note: runs ? `sim tools in ${home}` : `sim tools installed, but QEMU doesn't start here${process.platform === "darwin" ? `: it needs ${DOMAINS.sim.needs}` : ` (${qemu} --version failed)`}` }
+	}
 	const pkgs = domain === "case" ? ["build123d==0.13.0"] : ["platformio==6.2.0"]
 	const marker = domain === "case" ? python : join(home, VENV.pio)
 	if (domain === "firmware" && existsSync(marker)) return { installed: false, note: "firmware tools already installed" }
@@ -139,10 +219,11 @@ const SHORT: Record<Domain, string> = {
 	board: "a routed board, its fab files and pictures of it",
 	case: "the case or chassis as STEP and STL, a robot's 3D pictures",
 	firmware: "firmware built against the board's real pin map",
+	sim: "a robot's firmware in QEMU driving its MuJoCo model",
 }
 export function setupListing(home = bringupHome()): string {
 	const have = new Set(installedDomains(home))
-	const all: Domain[] = ["board", "case", "firmware"]
+	const all: Domain[] = ["board", "case", "firmware", "sim"]
 	const size = (d: Domain) => (DOMAINS[d].sizeMb >= 1000 ? `~${(DOMAINS[d].sizeMb / 1000).toFixed(1)} GB` : `~${DOMAINS[d].sizeMb} MB`)
 	const rows = all.map((d) => `  ${d.padEnd(9)} ${(have.has(d) ? "installed" : "not installed").padEnd(14)} ${`${size(d)}, ~${DOMAINS[d].seconds} s`.padEnd(16)} ${SHORT[d]}`)
 	const missing = all.filter((d) => !have.has(d))
@@ -163,7 +244,7 @@ export function setupListing(home = bringupHome()): string {
 // only lists them, so nothing is downloaded by accident.
 export async function setupCli(args: string[]): Promise<number> {
 	const asked = args.filter((a) => !a.startsWith("-"))
-	const all: Domain[] = ["board", "case", "firmware"]
+	const all: Domain[] = ["board", "case", "firmware", "sim"]
 	const picked = asked.includes("all") ? all : (asked.filter((a) => all.includes(a as Domain)) as Domain[])
 	const unknown = asked.filter((a) => a !== "all" && !all.includes(a as Domain))
 	if (!picked.length || unknown.length) {
@@ -189,8 +270,10 @@ export function installedDomains(home = bringupHome()): Domain[] {
 	const out: Domain[] = []
 	if (existsSync(join(home, "tools", "node", "node_modules", ".bin", BIN.tsci))) out.push("board")
 	const lib = join(home, ".venv", "lib")
-	const site = existsSync(lib) ? readdirSync(lib).map((v) => join(lib, v, "site-packages")) : []
+	// Linux and macOS: .venv/lib/python3.12/site-packages; Windows: .venv/Lib/site-packages.
+	const site = existsSync(lib) ? [join(lib, "site-packages"), ...readdirSync(lib).map((v) => join(lib, v, "site-packages"))] : []
 	if (site.some((p) => existsSync(join(p, "build123d")))) out.push("case")
 	if (existsSync(join(home, VENV.pio))) out.push("firmware")
+	if (site.some((p) => existsSync(join(p, "mujoco"))) && existsSync(join(home, QEMU_BINS.riscv32))) out.push("sim")
 	return out
 }

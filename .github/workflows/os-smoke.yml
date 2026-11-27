@@ -1,7 +1,8 @@
 # The free tier on a fresh machine of each OS: npm ci, typecheck, the MCP server's handshake, a mock design with no
-# tools, then each setup domain (board, case, firmware) and a design that needs it (scripts/ci-smoke.mjs). Each step's time
-# and pass/fail are in the job summary; the packed job takes the newcomer's path through the npm tarball a user
-# installs. On demand and on pushes to main, not on every commit.
+# tools, then each setup domain (board, case, firmware, sim) and a design that needs it, a rover's MuJoCo drive among
+# them; `bringup-mcp login` against a fake Studio on localhost, with the last design streaming to it
+# (scripts/ci-smoke.mjs). Each step's time and pass/fail are in the job summary; the packed job takes the newcomer's
+# path through the npm tarball a user installs. On demand and on pushes to main, not on every commit.
 name: OS smoke test
 
 on:
@@ -28,6 +29,11 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             src/setup/tools-node/package-lock.json
+      # Espressif's macOS QEMU links Homebrew's libraries (README: setup sim); Linux's libslirp comes with setup sim and
+      # Windows' build carries its DLLs.
+      - name: QEMU's libraries (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libgcrypt glib pixman sdl2 libslirp
       - name: Smoke test (each step timed in the job summary)
         run: node scripts/ci-smoke.mjs
 

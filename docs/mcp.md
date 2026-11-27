@@ -49,6 +49,7 @@ What a run builds depends on the machine (`hardware`, `auto` by default):
   npx -y bringup-mcp setup board      # tscircuit and bun: about 923 MB, ~30 s. Routed boards and their pictures
   npx -y bringup-mcp setup case       # Python and build123d: about 945 MB, ~75 s. Cases, chassis, printed parts
   npx -y bringup-mcp setup firmware   # PlatformIO: about 125 MB, then the chip's compiler on the first build (~1 GB)
+  npx -y bringup-mcp setup sim        # robots: MuJoCo and Espressif's QEMU, the firmware driving the physics model (from 0.2.4)
   npx -y bringup-mcp setup            # lists them, installs nothing
   ```
 

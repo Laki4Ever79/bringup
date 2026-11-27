@@ -23,7 +23,7 @@ const SERIAL_LIMIT = 64_000
 
 function esptoolPath(): string {
 	const core = process.env.PLATFORMIO_CORE_DIR ?? join(homedir(), ".platformio")
-	return join(core, "packages/tool-esptool/esptool")
+	return join(core, "packages/tool-esptool", process.platform === "win32" ? "esptool.exe" : "esptool")
 }
 
 function bootApp0Path(): string {

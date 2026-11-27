@@ -9,7 +9,8 @@
 import { spawn, spawnSync } from "node:child_process"
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { createServer } from "node:http"
+import { basename, join } from "node:path"
 
 const win = process.platform === "win32"
 const steps = []
@@ -21,7 +22,8 @@ const only = process.argv.includes("--newcomer-only")
 const packed = process.argv.includes("--packed")
 // The user's folder holding the installed package (--packed); the server and setup run from there.
 const user = join(out, "user")
-const env = { ...process.env, BRINGUP_OUT: join(out, "runs"), ...(only ? {} : { BRINGUP_HOME: join(out, "home") }), BRINGUP_TOOLCHAIN: "local", MOZAIK_CREDENTIALS_FILE: win ? "NUL" : "/dev/null" }
+// BRINGUP_STUDIO_TOKEN_FILE: `login` against the fake Studio below writes its token here, never over a real one in ~/.bringup.
+const env = { ...process.env, BRINGUP_STUDIO_TOKEN_FILE: join(out, "studio.json"), BRINGUP_OUT: join(out, "runs"), ...(only ? {} : { BRINGUP_HOME: join(out, "home") }), BRINGUP_TOOLCHAIN: "local", MOZAIK_CREDENTIALS_FILE: win ? "NUL" : "/dev/null" }
 
 async function step(name, fn) {
 	const t = Date.now()
@@ -102,6 +104,53 @@ function files(dir) {
 	return all
 }
 
+// A command line of the bringup-mcp CLI (this checkout's, or the installed copy's with --packed), without blocking: the
+// fake Studio answers in this same process while it runs.
+function cli(args, timeoutMs = 120_000) {
+	return new Promise((ok, no) => {
+		const p = packed ? spawn(`npx --no-install bringup-mcp ${args}`, { shell: true, cwd: user, env }) : spawn(process.execPath, ["bin/bringup-mcp.js", ...args.split(" ")], { env })
+		let text = ""
+		p.stdout.on("data", (d) => (text += d))
+		p.stderr.on("data", (d) => (text += d))
+		const timer = setTimeout(() => (p.kill(), no(new Error(`bringup-mcp ${args}: no exit in ${timeoutMs / 1000} s: ${text}`))), timeoutMs)
+		p.on("close", (code) => (clearTimeout(timer), code === 0 ? ok(text) : no(new Error(`bringup-mcp ${args} exited ${code}: ${text}`))))
+	})
+}
+
+// A fake Bringup Studio on localhost (the real server, cloud/, is private): the connector's side of the protocol
+// (src/connector): device-code pairing (pending once, then approved), each run's file changes kept by run id, and one
+// command per run sent back down (the robot's stop, "H 0 0", into bench-commands.jsonl) to prove the write-back.
+function fakeStudio() {
+	const TOKEN = "ci-smoke-token"
+	const got = new Map()
+	const commanded = new Set()
+	let polls = 0
+	const json = (res, code, body) => res.writeHead(code, { "content-type": "application/json" }).end(JSON.stringify(body))
+	const server = createServer((req, res) => {
+		let body = ""
+		req.on("data", (c) => (body += c))
+		req.on("end", () => {
+			const url = req.url ?? ""
+			if (url === "/api/connector/pair") return json(res, 200, { deviceCode: "dc-1", userCode: "CISM-0KE1", verifyUrl: `${base}/verify`, intervalS: 1, expiresInS: 60 })
+			if (url === "/api/connector/pair/poll") return ++polls < 2 ? json(res, 202, { pending: true }) : json(res, 200, { token: TOKEN, account: "ci-smoke" })
+			if (url === "/verify") return res.writeHead(200).end("approved")
+			const m = /^\/api\/connector\/runs\/([^/?]+)\/(sync|commands)/.exec(url)
+			if (!m) return json(res, 404, {})
+			if (req.headers.authorization !== `Bearer ${TOKEN}`) return json(res, 401, { error: "bad token" })
+			const run = decodeURIComponent(m[1])
+			if (m[2] === "sync") {
+				for (const c of JSON.parse(body).changes) (got.get(run) ?? got.set(run, new Set()).get(run)).add(c.path)
+				return json(res, 200, {})
+			}
+			if (!commanded.has(run)) return (commanded.add(run), json(res, 200, { commands: [{ file: "bench-commands.jsonl", line: JSON.stringify({ at: new Date().toISOString(), cmd: "H 0 0" }), id: "ci-1" }] }))
+			setTimeout(() => json(res, 200, { commands: [] }), 1000)
+		})
+	})
+	let base = ""
+	const ready = new Promise((r) => server.listen(0, "127.0.0.1", () => ((base = `http://127.0.0.1:${server.address().port}`), r())))
+	return { ready, url: () => base, got, close: () => (server.closeAllConnections(), server.close()) }
+}
+
 const LOGGER = "BLE temperature logger, USB-C, 50x30 mm"
 // expect: what the run must have made (board pictures, printed parts, the ROS workspace, a firmware image).
 // The last design started, for the steps after it (run_summary, get_pictures, export_package).
@@ -155,7 +204,12 @@ async function design(server, expect = {}, brief = LOGGER) {
 		const wall = Date.parse(tr.at(-1).at) - Date.parse(tr[0].at)
 		builds += `; wall ${Math.round(wall / 1000)} s, a build running ${Math.round(any / 1000)} s, two or more at once ${Math.round(two / 1000)} s`
 	} catch {}
-	const said = `settled at revision ${st.revision}${builds ? ` (builds: ${builds})` : ""}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips, ${printed} printed-part files, ${ros} URDFs, ${firmware} firmware images`
+	// The simulated drive: the drive builder's newest drive/rev-N/drive.json (pass, fail, or not run and why); the ROS
+	// acceptance writes its own elsewhere.
+	const drives = fs.filter((x) => /[\\/]drive[\\/]rev-\d+[\\/]drive\.json$/.test(x.f)).sort((a, b) => statSync(a.f).mtimeMs - statSync(b.f).mtimeMs)
+	const drive = drives.length ? JSON.parse(readFileSync(drives.at(-1).f, "utf8")) : null
+	const said = `settled at revision ${st.revision}${builds ? ` (builds: ${builds})` : ""}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips, ${printed} printed-part files, ${ros} URDFs, ${firmware} firmware images${drive ? `, drive ${drive.result}${drive.topSpeedMps ? ` (top ${drive.topSpeedMps.toFixed(2)} m/s)` : ""}` : ""}`
+	if (expect.drive && drive?.result !== "pass") throw new Error(`settled, but the MuJoCo drive ${drive ? `${drive.result}: ${drive.reason || (drive.segments ?? []).filter((x) => !x.pass).map((x) => `${x.name}: ${x.detail}`).join("; ")}` : "never ran"}; ${said}`)
 	const missing = [expect.board && !pics && "board pictures", expect.printed && !printed && "printed parts", expect.ros && !ros && "the ROS workspace", expect.firmware && !firmware && "a firmware image"].filter(Boolean)
 	if (missing.length) throw new Error(`settled, but no ${missing.join(", ")}: ${said}; hardware: ${start.hardware}`)
 	return said
@@ -177,6 +231,15 @@ if (packed) {
 	await step("npm ci", () => (sh("npm ci --no-audit --no-fund"), ""))
 	await step("typecheck", () => (sh("npm run typecheck"), ""))
 }
+const studio = fakeStudio()
+await studio.ready
+// `bringup login` before the last design, so that design streams to Studio; checked after the newcomer's path.
+const login = () => step("bringup-mcp login (a fake Studio on localhost)", async () => {
+	const said = await cli(`login --url ${studio.url()}`)
+	const t = JSON.parse(readFileSync(env.BRINGUP_STUDIO_TOKEN_FILE, "utf8"))
+	if (t.url !== studio.url() || !t.token) throw new Error(`login saved no token for ${studio.url()}: ${said}`)
+	return said.trim().split(/\r?\n/).at(-1).replace(/ \(token in .*\)/, "")
+})
 const server = mcp()
 await step("MCP handshake (initialize, tools/list)", async () => {
 	const init = await server.call("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "ci-smoke", version: "0" } })
@@ -190,12 +253,15 @@ if (packed && !only) {
 await step("mock design, no tools (design only)", () => design(server))
 await step("setup board", () => (sh("node bin/bringup-mcp.js setup board", 1_200_000), files(join(out, "home")).length ? "installed into BRINGUP_HOME" : "nothing installed"))
 await step("mock design with the board tools (board + pictures)", () => design(server, { board: true }))
-// The case's CAD kernel (build123d) and a robot: its chassis as printed parts and its ROS 2 workspace.
+// The case's CAD kernel (build123d); PlatformIO (the first firmware build fetches the chip's platform and compiler);
+// MuJoCo and Espressif's QEMU. Then a robot: its chassis as printed parts, its ROS 2 workspace, and its own firmware in
+// QEMU driving the MuJoCo model over the course.
 await step("setup case", () => setup("case"))
-await step("mock rover with the case tools (printed parts + ROS workspace)", () => design(server, { board: true, printed: true, ros: true }, readFileSync("briefs/rover.md", "utf8")))
-// PlatformIO; the first firmware build fetches the chip's platform and compiler.
 await step("setup firmware", () => setup("firmware"))
+await step("setup sim", () => setup("sim"))
+await step("mock rover (printed parts, ROS workspace, MuJoCo drive)", () => design(server, { board: true, printed: true, ros: true, drive: true }, readFileSync("briefs/rover.md", "utf8")))
 }
+await login()
 await step("mock design with the firmware tools (firmware built)", () => design(server, { board: true, firmware: true }))
 // The newcomer's path after that design, all through the MCP as Claude Code drives it: what was built, show me, the
 // package to order and print from.
@@ -237,6 +303,28 @@ await step("export_package (fab, BOM, case, pictures, firmware)", async () => {
 	if (!/scripted agents/.test(readFileSync(join(p.package, "README.md"), "utf8").split("\n").slice(0, 4).join("\n"))) throw new Error("a mock design's README doesn't open with the scripted-review banner")
 	return `${all.length} files, every expected one, the scripted-review banner on top`
 })
+await step("Studio got the run streamed, and its command back in the run", async () => {
+	if (!lastRun) throw new Error("no design ran")
+	const id = basename(lastRun.outDir)
+	const want = ["contract.json", "trace.jsonl", "report.md"]
+	const t = Date.now()
+	// The run's own end sends its last changes; it may still be closing.
+	while (want.some((f) => !studio.got.get(id)?.has(f)) && Date.now() - t < 60_000) await new Promise((r) => setTimeout(r, 1000))
+	const got = studio.got.get(id) ?? new Set()
+	const lacking = want.filter((f) => !got.has(f))
+	if (lacking.length) throw new Error(`Studio lacks ${lacking.join(", ")} of run ${id}; it got ${got.size} files from it (${[...studio.got.keys()].join(", ") || "no runs"})`)
+	const leaked = [...got].filter((f) => /(^|\/)(\.pio|\.package-work|node_modules)\//.test(f))
+	if (leaked.length) throw new Error(`build files went to Studio: ${leaked.slice(0, 3).join(", ")}`)
+	const cmds = join(lastRun.outDir, "bench-commands.jsonl")
+	if (!existsSync(cmds) || !/"cmd":"H 0 0"/.test(readFileSync(cmds, "utf8"))) throw new Error("Studio's command didn't reach the run's bench-commands.jsonl")
+	return `${got.size} files of ${id}; the command written back`
+})
+await step("bringup-mcp logout", async () => {
+	await cli("logout")
+	if (existsSync(env.BRINGUP_STUDIO_TOKEN_FILE)) throw new Error("the token is still there")
+	return ""
+})
+studio.close()
 server.close()
 
 const md = [`### ${process.platform} ${process.arch}, Node ${process.versions.node}${packed ? ", the packed package (npx bringup-mcp)" : ""}`, "", "| Step | Result | Time | Notes |", "|---|---|---|---|", ...steps.map((x) => `| ${x.name} | ${x.ok ? "pass" : "**FAIL**"} | ${x.s.toFixed(1)} s | ${x.note.replace(/\|/g, "/")} |`), ""].join("\n")

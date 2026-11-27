@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // `npx bringup-mcp`: Bringup's MCP server on stdio (docs/mcp.md). The sources are TypeScript, run through tsx.
-// `npx bringup-mcp setup <board|case|firmware|all>`: installs one domain's tools into ~/.bringup (src/setup/domains.ts).
+// `npx bringup-mcp setup <board|case|firmware|sim|all>`: installs one domain's tools into ~/.bringup (src/setup/domains.ts).
 // `npx bringup-mcp login --url <studio>` / `logout`: connects this machine to Bringup Studio (src/connector/cli.ts).
 // `npx bringup-mcp bench-stream <design folder> <device>` / `bench-log <design folder> <log>`: the real robot's serial
 // log, saved in the design and read for what it shows (src/bench/cli.ts).
@@ -13,7 +13,7 @@ if (["--help", "-h", "help"].includes(process.argv[2])) {
 	console.log(`bringup-mcp: Bringup for Claude Code and other MCP clients.
 
   npx bringup-mcp                      the MCP server on stdio (add it: claude mcp add bringup -- npx -y bringup-mcp)
-  npx bringup-mcp setup [domain...]    list the hardware tools, or install board, case, firmware or all
+  npx bringup-mcp setup [domain...]    list the hardware tools, or install board, case, firmware, sim or all
   npx bringup-mcp login --url <studio> connect this machine to Bringup Studio; logout disconnects
   npx bringup-mcp bench-log <design> <log>   read a real board's serial log into its design
 

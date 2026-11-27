@@ -7,6 +7,7 @@ import { homedir, tmpdir } from "node:os"
 import { delimiter, join, sep } from "node:path"
 import { run, type RunResult } from "./exec.ts"
 import { renodePath } from "./renode.ts"
+import { QEMU_BINS } from "./qemu.ts"
 import { popplerAvailable } from "../learn/docs.ts"
 import { imagePresent, mountDirs, toolchainImage, writeShims } from "./toolchain.ts"
 
@@ -58,7 +59,7 @@ const local = (root: string, rel: string) => (existsSync(join(root, rel)) ? join
 export async function detectEnvironment(root: string): Promise<Env> {
 	// Either of Espressif's QEMUs (src/tools/qemu.ts): the riscv32 one (ESP32-C3), else the xtensa one (ESP32-S3); each
 	// run checks its own chip's binary.
-	const qemuPath = local(root, "tools/qemu/bin/qemu-system-riscv32") ?? local(root, "tools/qemu/bin/qemu-system-xtensa")
+	const qemuPath = toolAt(root, QEMU_BINS.riscv32) ?? toolAt(root, QEMU_BINS.xtensa)
 	const [localKicad, dockerKicad, qemu] = await Promise.all([
 		run("kicad-cli", ["version"], { timeoutMs: 10_000 }),
 		run("docker", ["image", "inspect", KICAD_IMAGE], { timeoutMs: 10_000 }),
@@ -93,9 +94,10 @@ async function dockerToolchain(root: string, tools: Record<"tsci" | "python" | "
 	return { image, tools: missing, shims: Object.fromEntries(missing.map((t) => [t, all[t]])) }
 }
 
-// Espressif's prebuilt QEMU links libslirp, which NOTES.md installs into tools/qemu/lib.
+// Espressif's prebuilt QEMU links libslirp, which NOTES.md (a checkout) or `setup sim` (the tools home) puts into
+// tools/qemu/lib on Linux. Windows' build carries its DLLs beside the binary; macOS's links Homebrew's libraries.
 export function qemuEnv(root: string): Record<string, string> {
-	return { LD_LIBRARY_PATH: [join(root, "tools/qemu/lib"), process.env.LD_LIBRARY_PATH].filter(Boolean).join(":") }
+	return { LD_LIBRARY_PATH: [join(root, "tools/qemu/lib"), join(bringupHome(), "tools/qemu/lib"), process.env.LD_LIBRARY_PATH].filter(Boolean).join(":") }
 }
 
 // PATH for child processes, with the repo's node tools (tsci, bun) first.

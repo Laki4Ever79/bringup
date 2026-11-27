@@ -131,3 +131,17 @@ test("bringup-mcp --help prints the commands and exits, instead of starting the 
 	assert.match(out, /claude mcp add bringup -- npx -y bringup-mcp/)
 	assert.match(out, /setup \[domain\.\.\.\]/)
 })
+
+test("the sim domain counts as installed with MuJoCo in the venv and QEMU in tools/qemu; Windows' venv layout too", () => {
+	const home = tempDir()
+	const qemu = join(home, process.platform === "win32" ? "tools/qemu/bin/qemu-system-riscv32.exe" : "tools/qemu/bin/qemu-system-riscv32")
+	mkdirSync(join(qemu, ".."), { recursive: true })
+	writeFileSync(qemu, "")
+	assert.ok(!installedDomains(home).includes("sim"), "QEMU alone isn't the sim domain")
+	// Windows keeps a venv's packages in .venv/Lib/site-packages (no python3.x folder).
+	mkdirSync(join(home, ".venv", "lib", "site-packages", "mujoco"), { recursive: true })
+	mkdirSync(join(home, ".venv", "lib", "site-packages", "build123d"), { recursive: true })
+	assert.deepEqual(installedDomains(home), ["case", "sim"])
+	assert.match(setupListing(home), /sim\s+installed/)
+	assert.match(DOMAINS.sim.gives, /MuJoCo/)
+})

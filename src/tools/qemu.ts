@@ -3,14 +3,13 @@
 // The machine comes from the MCU profile's sim.machine; a design from before profiles is the C3's. Every caller (the
 // drive simulation, the boot check, the linked pair, the ROS acceptance's qemu back end) builds its command from here,
 // so no tool is hard-wired to one chip (lead, 18 Nov 2026, after the user approved the Xtensa QEMU).
-import { existsSync } from "node:fs"
-import { join } from "node:path"
+import { toolAt } from "./env.ts"
 
 export type QemuMachine = "esp32c3" | "esp32s3" | "esp32"
 
 export interface QemuTarget {
 	machine: QemuMachine
-	bin: string // the binary, relative to the repo root
+	bin: string // the binary, relative to the repo root or the tools home (~/.bringup, `npx bringup-mcp setup sim`)
 	chip: string // esptool's --chip
 	simEnv: string // the rover firmware's simulation build (templates/fw-rover/platformio.ini)
 	flash: string // the flash image's size: the board's own (PlatformIO writes it into the image header, and the
@@ -18,10 +17,13 @@ export interface QemuTarget {
 	// smaller than the size in the binary image header(8192k)")
 }
 
+// Windows' builds are .exe (Espressif's x86_64-w64-mingw32 release).
+const EXE = process.platform === "win32" ? ".exe" : ""
+export const QEMU_BINS = { riscv32: `tools/qemu/bin/qemu-system-riscv32${EXE}`, xtensa: `tools/qemu/bin/qemu-system-xtensa${EXE}` } as const
 const TARGETS: Record<QemuMachine, QemuTarget> = {
-	esp32c3: { machine: "esp32c3", bin: "tools/qemu/bin/qemu-system-riscv32", chip: "esp32c3", simEnv: "esp32c3_sim", flash: "4MB" },
-	esp32s3: { machine: "esp32s3", bin: "tools/qemu/bin/qemu-system-xtensa", chip: "esp32s3", simEnv: "esp32s3_sim", flash: "8MB" },
-	esp32: { machine: "esp32", bin: "tools/qemu/bin/qemu-system-xtensa", chip: "esp32", simEnv: "esp32_sim", flash: "4MB" },
+	esp32c3: { machine: "esp32c3", bin: QEMU_BINS.riscv32, chip: "esp32c3", simEnv: "esp32c3_sim", flash: "4MB" },
+	esp32s3: { machine: "esp32s3", bin: QEMU_BINS.xtensa, chip: "esp32s3", simEnv: "esp32s3_sim", flash: "8MB" },
+	esp32: { machine: "esp32", bin: QEMU_BINS.xtensa, chip: "esp32", simEnv: "esp32_sim", flash: "4MB" },
 }
 
 export const QEMU_MACHINES = Object.keys(TARGETS) as QemuMachine[]
@@ -31,10 +33,9 @@ export function qemuTarget(machine: string | null | undefined = "esp32c3"): Qemu
 	return TARGETS[(machine ?? "esp32c3") as QemuMachine] ?? null
 }
 
-// The binary's absolute path when it is installed, else null.
+// The binary's absolute path when it is installed (the checkout's tools/, else the tools home's), else null.
 export function qemuBinary(root: string, t: QemuTarget): string | null {
-	const p = join(root, t.bin)
-	return existsSync(p) ? p : null
+	return toolAt(root, t.bin)
 }
 
 // The arguments every run shares: the machine, virtual time (-icount 3: don't read timings from it), the flash image,

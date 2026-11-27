@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process"
-import { createConnection } from "node:net"
+import { createConnection, createServer } from "node:net"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
@@ -63,6 +63,18 @@ export interface DriveOptions {
 
 // Whether something listens on a local TCP port: a connection opened and closed at once (QEMU's console server takes
 // a client again after one leaves).
+// A TCP port nothing listens on now (the OS's pick), for QEMU to serve.
+function freePort(): Promise<number> {
+	return new Promise((ok, no) => {
+		const s = createServer()
+		s.on("error", no)
+		s.listen(0, "127.0.0.1", () => {
+			const port = (s.address() as { port: number }).port
+			s.close(() => ok(port))
+		})
+	})
+}
+
 export function portOpen(port: number): Promise<boolean> {
 	return new Promise((res) => {
 		const s = createConnection({ host: "127.0.0.1", port })
@@ -271,8 +283,8 @@ async function simInLoop(opts: SimInLoop): Promise<{ notRun: string } | { json: 
 	const target = qemuTarget(o.machine)
 	if (!target) return notRun(`QEMU has no model of the ${o.machine} machine: not proven in simulation`)
 	const qemu = qemuBinary(o.root, target)
-	if (!qemu) return notRun(`QEMU for the ${target.machine} (${target.bin.split("/").pop()}) is not installed (npm run setup): not proven in simulation`)
-	if (!hasMujoco(o.python)) return notRun("MuJoCo is not installed (npm run setup -- --robotics): not proven in simulation")
+	if (!qemu) return notRun(`QEMU for the ${target.machine} (${target.bin.split("/").pop()}) is not installed (\`npx bringup-mcp setup sim\`; a checkout: npm run setup -- --robotics): not proven in simulation`)
+	if (!hasMujoco(o.python)) return notRun("MuJoCo is not installed (`npx bringup-mcp setup sim`; a checkout: npm run setup -- --robotics): not proven in simulation")
 	const env = o.env ?? target.simEnv
 	const build = await run(o.pio, ["run", "-d", o.fwDir, "-e", env], { timeoutMs: 900_000, ...(o.buildFlags ? { env: { ...(process.env as Record<string, string>), PLATFORMIO_BUILD_FLAGS: o.buildFlags } } : {}) })
 	if (build.code !== 0) return notRun(`the simulation firmware didn't build: ${(build.stdout + build.stderr).trim().split("\n").slice(-3).join(" ")}`)
@@ -283,10 +295,13 @@ async function simInLoop(opts: SimInLoop): Promise<{ notRun: string } | { json: 
 	// The firmware's UART1 on a Unix socket in the run folder: a free TCP port, closed and then served by QEMU, could be
 	// taken by another process in between (pending-fixes, 11 Nov); a path in our own folder can't. A socket path must
 	// fit 108 bytes, so a deep run folder uses a fresh private temp folder instead (mkdtemp: unique, also race-free).
+	// Windows: a free TCP port instead (its Python has no AF_UNIX sockets); the small race above is the price there.
 	const local = join(o.outDir, "uart1.sock")
-	const sock = Buffer.byteLength(local) <= 100 ? local : join(mkdtempSync(join(tmpdir(), "bringup-drive-")), "uart1.sock")
-	rmSync(sock, { force: true })
-	const q = spawn(qemu, ["-display", "none", ...qemuBaseArgs(target, image), "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${join(o.outDir, "uart0.txt")}`, "-serial", `unix:${sock},server=on,wait=on`], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
+	const tcp = process.platform === "win32" ? await freePort() : null
+	const sock = tcp ? null : Buffer.byteLength(local) <= 100 ? local : join(mkdtempSync(join(tmpdir(), "bringup-drive-")), "uart1.sock")
+	if (sock) rmSync(sock, { force: true })
+	const uart1 = tcp ? `tcp:127.0.0.1:${tcp},server=on,wait=on` : `unix:${sock},server=on,wait=on`
+	const q = spawn(qemu, ["-display", "none", ...qemuBaseArgs(target, image), "-serial", o.consolePort ? `tcp:127.0.0.1:${o.consolePort},server=on,wait=off` : `file:${join(o.outDir, "uart0.txt")}`, "-serial", uart1], { stdio: "ignore", env: { ...process.env, ...qemuEnv(o.root) } })
 	// The console is up once QEMU listens on it (polled; it stops when the drive ends).
 	let ended = false
 	if (o.consolePort && o.onConsoleReady)
@@ -297,7 +312,7 @@ async function simInLoop(opts: SimInLoop): Promise<{ notRun: string } | { json: 
 			}
 		})()
 	try {
-		const bridge = spawn(o.python, ["-B", join(o.root, o.script), specPath, sock, o.outDir, ...o.args], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
+		const bridge = spawn(o.python, ["-B", join(o.root, o.script), specPath, tcp ? String(tcp) : sock!, o.outDir, ...o.args], { cwd: join(o.root, "py"), stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PYTHONPATH: join(o.root, "py") } })
 		let stderr = ""
 		bridge.stderr.on("data", (d) => (stderr += d))
 		// A host's test that ends first asks the bridge to end the course (a "stop" file it checks); it writes its results.
@@ -314,7 +329,7 @@ async function simInLoop(opts: SimInLoop): Promise<{ notRun: string } | { json: 
 	} finally {
 		ended = true
 		q.kill("SIGKILL")
-		rmSync(sock, { force: true })
-		if (sock !== local) rmSync(dirname(sock), { recursive: true, force: true })
+		if (sock) rmSync(sock, { force: true })
+		if (sock && sock !== local) rmSync(dirname(sock), { recursive: true, force: true })
 	}
 }

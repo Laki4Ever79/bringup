@@ -162,7 +162,7 @@ Usual flow: start_design with the user's brief (it returns a runId at once), pol
 
 Cost: runs are scripted mocks by default, free and offline. Real models cost money: they need mock: false, realModels: true and a plan from plan_design that the user approved through approve_plan. Never start one without the user asking for it.
 
-Tools: without the hardware tools installed, the design is complete but the board, case and firmware are stubbed; start_design and run_summary say which command installs each. Installing downloads hundreds of MB, so ask the user first, then run \`npx bringup-mcp setup <board|case|firmware>\` or start again with installTools: true.`
+Tools: without the hardware tools installed, the design is complete but the board, case and firmware are stubbed; start_design and run_summary say which command installs each. Installing downloads hundreds of MB, so ask the user first, then run \`npx bringup-mcp setup <board|case|firmware|sim>\` or start again with installTools: true.`
 
 export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	const runs = new Map<string, RunState>()

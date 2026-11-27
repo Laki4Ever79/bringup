@@ -289,7 +289,7 @@ export function createArmSimBuilder(env: Env, lock?: BuildLock): Human {
 		notNeeded: armNotNeeded,
 		build: async ({ dir, snapshot, revision }) => {
 			const notRun = (reason: string): ArmDriveArtifact => ({ revision, dir, result: "not run", reason, note: "" })
-			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the .venv simulation tools are missing: not proven in simulation")
+			if (!env.pio || !env.qemu || !env.python) return notRun("PlatformIO, QEMU or the simulation tools are missing (`npx bringup-mcp setup firmware sim`): not proven in simulation")
 			if (!snapshot.values.armTargets) return notRun("no arm targets: nothing to pick and place")
 			const chip = mcuProfileOf(snapshot.values.parts)
 			const machine = chip ? chip.sim.machine : "esp32s3"
