@@ -118,6 +118,20 @@ async function design(server, expect = {}, brief = LOGGER) {
 		for (const e of readFileSync(join(start.outDir, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)))
 			if ((e.type === "artifact.ready" || e.type === "artifact.failed") && typeof e.payload.ms === "number") per[e.payload.kind] = (per[e.payload.kind] ?? 0) + e.payload.ms
 		builds = Object.entries(per).sort((a, b) => b[1] - a[1]).map(([k, ms]) => `${k} ${Math.round(ms / 1000)} s`).join(", ")
+		// Whether the builds overlap: each one's [end - ms, end]; the time with any build running, with two or more, and the
+		// run's wall time (run 9: Windows' builds summed about its wall time, Linux's to twice it).
+		const tr = readFileSync(join(start.outDir, "trace.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+		const spans = tr.filter((e) => (e.type === "artifact.ready" || e.type === "artifact.failed") && e.payload.ms > 0).map((e) => [Date.parse(e.at) - e.payload.ms, Date.parse(e.at)])
+		const edges = spans.flatMap(([a, z]) => [[a, 1], [z, -1]]).sort((x, y) => x[0] - y[0] || x[1] - y[1])
+		let n = 0, last = 0, any = 0, two = 0
+		for (const [t, d] of edges) {
+			if (n >= 1) any += t - last
+			if (n >= 2) two += t - last
+			n += d
+			last = t
+		}
+		const wall = Date.parse(tr.at(-1).at) - Date.parse(tr[0].at)
+		builds += `; wall ${Math.round(wall / 1000)} s, a build running ${Math.round(any / 1000)} s, two or more at once ${Math.round(two / 1000)} s`
 	} catch {}
 	const said = `settled at revision ${st.revision}${builds ? ` (builds: ${builds})` : ""}, ${fs.length} files, ${pics} board pictures, ${gerbers} gerber zips, ${printed} printed-part files, ${ros} URDFs, ${firmware} firmware images`
 	const missing = [expect.board && !pics && "board pictures", expect.printed && !printed && "printed parts", expect.ros && !ros && "the ROS workspace", expect.firmware && !firmware && "a firmware image"].filter(Boolean)
