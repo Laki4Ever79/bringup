@@ -20,6 +20,7 @@ export const LANES = [
 	{ key: "build:drive", label: "Simulated drive" },
 	{ key: "build:arm", label: "Printed arm" },
 	{ key: "build:armsim", label: "Simulated pick-and-place" },
+	{ key: "build:cncsim", label: "Simulated machine" },
 	{ key: "build:testkit", label: "Test kit" },
 	{ key: "grounding", label: "Grounding check" },
 	{ key: "consistency", label: "Consistency" },
@@ -32,6 +33,9 @@ const HISTORY = 40
 const ROBOT_LANES = new Set(["mechanics", "build:chassis", "build:drive"])
 // A robot arm's tiles: its mechanics engineer (who owns the arm field) and its printed parts.
 const ARM_LANES = new Set(["build:arm", "build:armsim"])
+// A CNC's simulated machine (grblHAL in Renode), once the design has a cnc field.
+const CNC_LANES = new Set(["build:cncsim"])
+const isCnc = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "cnc")
 const isArm = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "arm")
 const CASE_LANES = new Set(["enclosure", "build:enclosure"])
 const isRobot = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "mechanics")
@@ -42,8 +46,8 @@ const chassisBuilt = (events) => events.some((e) => e.type === "artifact.ready" 
 
 // The lane keys this design has a tile for, from the trace so far.
 export function shownLanes(events) {
-	const robot = isRobot(events), arm = isArm(events), noCase = caseSkipped(events)
-	return LANES.map((l) => l.key).filter((k) => (ARM_LANES.has(k) ? arm : k === "mechanics" ? robot || arm : ROBOT_LANES.has(k) ? robot : CASE_LANES.has(k) ? !((robot || arm) && noCase) : true))
+	const robot = isRobot(events), arm = isArm(events), cnc = isCnc(events), noCase = caseSkipped(events)
+	return LANES.map((l) => l.key).filter((k) => (CNC_LANES.has(k) ? cnc : ARM_LANES.has(k) ? arm : k === "mechanics" ? robot || arm || cnc : ROBOT_LANES.has(k) ? robot : CASE_LANES.has(k) ? !((robot || arm) && noCase) : true))
 }
 
 // What "consistent" means for this design, in words: the board and firmware always, the case unless it has none,

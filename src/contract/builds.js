@@ -44,4 +44,8 @@ export const BUILDS = {
 	// The arm's pick-and-place in the loop (src/tools/drive.ts runArmDrive): its firmware (pins, parts) drives the MuJoCo
 	// arm (arm, armTargets: the cup, the repeats) in QEMU. Only with an arm field.
 	armsim: { inputs: ["arm", "armTargets", "pins", "parts"], requires: ["arm", "armTargets", "pins"], optional: "arm" },
+	// The CNC's firmware in the loop (src/tools/cnc-sim.ts runCncSim): grblHAL's simulation build from the board map (pins,
+	// parts) and settings (cnc, cncTargets) runs in Renode: steps per motor, the e-stop, the stall stop, a hard limit. Only
+	// with a cnc field.
+	cncsim: { inputs: ["cnc", "cncTargets", "pins", "parts"], requires: ["cnc", "pins"], optional: "cnc" },
 }

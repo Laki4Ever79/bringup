@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Human } from "@mozaik-ai/core"
-import { BUILD_DERIVED, BUILD_INPUTS, BUILD_REQUIRES, caseNotNeeded, armNotNeeded, chassisNotNeeded, createBuilder, type BuildLock } from "../agents/builders.ts"
+import { BUILD_DERIVED, BUILD_INPUTS, BUILD_REQUIRES, caseNotNeeded, armNotNeeded, chassisNotNeeded, cncNotNeeded, createBuilder, type BuildLock } from "../agents/builders.ts"
 import { micPorts, mountingHoles, placedByRole, testPoints, generatedNets } from "../codegen/circuit.ts"
 import { testPlan, testPlanMarkdown } from "../contract/testkit.ts"
 import { behaviorHeader, modelHeader, parseSensorHeader, pinsHeader } from "../codegen/firmware.ts"
@@ -111,9 +111,10 @@ export function createStubBuilders(lock?: BuildLock, kinds?: readonly string[]):
 		createBuilder({ kind: "drive", inputs: BUILD_INPUTS.drive, requires: BUILD_REQUIRES.drive, derived: BUILD_DERIVED.drive, notNeeded: chassisNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "drive"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", segments: [], stub: true }) }),
 		createBuilder({ kind: "arm", inputs: BUILD_INPUTS.arm, requires: BUILD_REQUIRES.arm, notNeeded: armNotNeeded, lock, build: async ({ revision, dir }) => ({ ok: true as const, revision, dir: note(dir, "arm"), files: [], links: [], built: { poses: 0, pairs: 0, clashes: [], print: { ok: true, issues: [], notes: [], bedMm: [] } }, stub: true as const }) }),
 		createBuilder({ kind: "armsim", inputs: BUILD_INPUTS.armsim, requires: BUILD_REQUIRES.armsim, notNeeded: armNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "armsim"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", note: "", stub: true as const }) }),
+		createBuilder({ kind: "cncsim", inputs: BUILD_INPUTS.cncsim, requires: BUILD_REQUIRES.cncsim, notNeeded: cncNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "cncsim"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", checks: [], knownLimits: [], stub: true as const }) }),
 		createBuilder({ kind: "testkit", inputs: BUILD_INPUTS.testkit, requires: BUILD_REQUIRES.testkit, derived: BUILD_DERIVED.testkit, lock, build: async ({ snapshot, revision, dir }) => stubTestkit(snapshot, revision, dir) }),
 	] as const
-	const order = ["board", "enclosure", "firmware", "chassis", "drive", "arm", "armsim", "testkit"]
+	const order = ["board", "enclosure", "firmware", "chassis", "drive", "arm", "armsim", "cncsim", "testkit"]
 	return kinds ? all.filter((_, i) => kinds.includes(order[i])) : [...all]
 }
 
@@ -127,6 +128,7 @@ export const BUILDER_TOOLS: Record<string, ("tsci" | "python" | "pio")[]> = {
 	firmware: ["pio"],
 	drive: ["python", "pio"],
 	armsim: ["python", "pio"],
+	cncsim: ["pio"],
 }
 export function missingBuilders(env: { tsci: string | null; python: string | null; pio: string | null }): string[] {
 	return Object.entries(BUILDER_TOOLS).filter(([, tools]) => tools.some((t) => !env[t])).map(([k]) => k)

@@ -29,6 +29,7 @@ import { armSection, mechanicsSection } from "./mechanics/report.ts"
 import { changeRipples, readTrace } from "./runner/ripple.ts"
 import { mcuPinName } from "./mcu/pins.ts"
 import { simBackendFor } from "./mcu/sim.ts"
+import { cncSimLines } from "./tools/cnc-sim.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -331,6 +332,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...(v.model?.sensor === "microphone" && s.artifacts.firmware && !isStub(s.artifacts.firmware) ? [`- Data-collection firmware: \`npm run bringup -- collect-firmware ${outDir}\` builds it for this design's sensor path (docs/edge-ai.md)`] : []),
 		bootLine(join(outDir, "trace.jsonl"), env, stubbed, Boolean(v.mechanics && v.motion), s.artifacts.drive, v.parts),
 		simulationLine(outDir, env),
+		...cncSimLines(s.artifacts.cncsim),
 		sourcingLine(join(outDir, "bom.json")),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),
 		``,

@@ -24,7 +24,7 @@ import { field, moduleById } from "../system/bought.ts"
 // runs the same checks).
 
 export type MechViolation = {
-	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety" | "mech-rules" | "arm-torque" | "arm-reach" | "arm-tipping" | "arm-supply" | "arm-interference" | "arm-dfm" | "cnc-travel" | "cnc-supply" | "cnc-parts" | "cnc-axis" | "cnc-fit" | "cnc-wiring" | "arm-sim"
+	kind: "mech-torque" | "mech-speed" | "mech-stopping" | "mech-current" | "mech-runtime" | "mech-voltage" | "mech-tipping" | "mech-climb" | "mech-fit" | "mech-wiring" | "mech-hw-layer" | "mech-drive" | "mech-mate" | "mech-safety" | "mech-rules" | "arm-torque" | "arm-reach" | "arm-tipping" | "arm-supply" | "arm-interference" | "arm-dfm" | "cnc-travel" | "cnc-supply" | "cnc-parts" | "cnc-axis" | "cnc-fit" | "cnc-wiring" | "arm-sim" | "cnc-sim"
 	message: string
 	fields: FieldName[]
 	affects: AgentRole[]

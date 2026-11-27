@@ -173,7 +173,30 @@ export function judgeCncSim(uart: string, renodeOut: string, plan: CncSimPlan): 
 	return { result: checks.every((c) => c.ok) ? "pass" : "fail", checks, knownLimits: CNC_SIM_LIMITS }
 }
 
-export const renodeDir = (root: string) => join(root, "tools/renode/renode_1.17.0-portable")
+// The cncsim build's artifact (src/agents/builders.ts createCncSimBuilder): the run's result, or why it didn't run.
+export interface CncSimArtifact {
+	revision: number
+	dir: string
+	result: "pass" | "fail" | "not run"
+	reason: string // the failed checks, or why it didn't run; "" on a pass
+	checks: CncSimResult["checks"]
+	knownLimits: readonly string[]
+	wallS?: number
+	stub?: true
+}
+
+// The report's lines: the result, each check, the known limits.
+export function cncSimLines(a: CncSimArtifact | undefined): string[] {
+	if (!a) return []
+	if (a.result === "not run") return [`- Simulated machine: not run (${a.reason})`]
+	return [
+		`- Simulated machine (grblHAL in Renode, rev ${a.revision}): ${a.result === "pass" ? "passes" : "FAILS"}${a.wallS !== undefined ? ` in ${a.wallS} s` : ""}`,
+		...a.checks.map((c) => `  - ${c.ok ? "ok" : "**FAILS**"} ${c.name}: ${c.detail}`),
+		`  - known limits: ${a.knownLimits.join("; ")}`,
+	]
+}
+
+export const renodeDir =(root: string) => join(root, "tools/renode/renode_1.17.0-portable")
 export const cncSimReady = (root: string) => grblhalReady(root) && existsSync(join(renodeDir(root), "renode"))
 
 // The whole simulation: grblHAL's simulation build in its own copy, the scenario in Renode, the judgement. Its files

@@ -21,11 +21,12 @@ import { chipInstances } from "../codegen/circuit.ts"
 import { exportFab } from "../tools/fab.ts"
 import { buildEnclosure } from "../tools/enclosure.ts"
 import { buildFirmware } from "../tools/firmware.ts"
+import { cncSimReady, runCncSim, type CncSimArtifact } from "../tools/cnc-sim.ts"
 import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
 
-type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact; arm: ArmBuildArtifact; armsim: ArmDriveArtifact & { stub?: true } }
+type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact; arm: ArmBuildArtifact; armsim: ArmDriveArtifact & { stub?: true }; cncsim: CncSimArtifact }
 
 export interface BuildContext {
 	revision: number
@@ -39,7 +40,7 @@ export const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b
 // Artifacts a design has only when it asks for them: without the field the kind counts as current (nothing to build),
 // so it never holds a design from settling.
 export const OPTIONAL_KINDS = Object.fromEntries(Object.entries(BUILDS).filter(([, b]) => b.optional).map(([k, b]) => [k, b.optional])) as Partial<Record<ArtifactKind, FieldName>>
-export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive", "arm", "armsim"]
+export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive", "arm", "armsim", "cncsim"]
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
 // its builds awaited one after another instead of concurrently. Runs never pass one.
@@ -297,6 +298,29 @@ export function createArmSimBuilder(env: Env, lock?: BuildLock): Human {
 			const fw = join(dir, "fw")
 			await prepareFirmware(env.root, fw, snapshot)
 			return runArmDrive({ root: env.root, python: env.python, pio: env.pio, fwDir: fw, outDir: dir, spec: armSimSpec(snapshot, mjcf), machine, timeoutMs: 900_000 }, revision)
+		},
+	})
+}
+
+// A CNC's firmware in the loop (gap 12, src/tools/cnc-sim.ts): grblHAL's simulation build from this contract runs in
+// Renode through the scenario (a move on every axis, the e-stop, a stall, a hard limit). Without PlatformIO, the grblHAL
+// clone or Renode in tools/ the design still settles on the plain checks: the artifact says "not run".
+export const cncNotNeeded = (s: ContractSnapshot) => (!s.values.cnc ? "no cnc design: not a machine tool" : null)
+export function createCncSimBuilder(env: Env, lock?: BuildLock): Human {
+	return createBuilder({
+		kind: "cncsim",
+		lock,
+		inputs: BUILD_INPUTS.cncsim,
+		requires: BUILD_REQUIRES.cncsim,
+		notNeeded: cncNotNeeded,
+		build: async ({ dir, snapshot, revision }) => {
+			const notRun = (reason: string): CncSimArtifact => ({ revision, dir, result: "not run", reason, checks: [], knownLimits: [] })
+			if (snapshot.values.cnc?.firmware !== "grblhal") return notRun(`the simulation runs grblHAL; this machine's firmware is ${snapshot.values.cnc?.firmware ?? "unset"}`)
+			if (!env.pio || !cncSimReady(env.root)) return notRun("PlatformIO, grblHAL's STM32F4xx clone or Renode 1.17 is missing in tools/: not proven in simulation")
+			mkdirSync(dir, { recursive: true })
+			const r = runCncSim(env.root, snapshot, dir)
+			const failed = r.checks.filter((c) => !c.ok)
+			return { revision, dir, result: r.result, reason: failed.map((c) => `${c.name}: ${c.detail}`).join("; "), checks: r.checks, knownLimits: r.knownLimits, wallS: r.wallS }
 		},
 	})
 }

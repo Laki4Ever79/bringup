@@ -1,4 +1,5 @@
 import type { ArmDriveArtifact, DriveArtifact } from "../tools/drive.ts"
+import type { CncSimArtifact } from "../tools/cnc-sim.ts"
 import { armBuildChecks, type ArmArtifact } from "../tools/arm.ts"
 import { rosBuiltChecks } from "../ros/checks.ts"
 import { boardMountChecks, chassisPrintChecks, interferenceChecks, packOnStandoffs, type ChassisArtifact, type Interference } from "../tools/chassis.ts"
@@ -122,6 +123,7 @@ export interface Artifacts {
 	drive?: DriveArtifact
 	arm?: ArmArtifact & { revision?: number; stub?: true }
 	armsim?: ArmDriveArtifact & { stub?: true }
+	cncsim?: CncSimArtifact
 }
 
 // The pins whose part isn't in the parts list yet: the architect writes the pins first (as told), and the parts agent
@@ -209,7 +211,7 @@ export interface Violation {
 	// A built artifact that disagrees with the contract: the rebuild of this kind is what fixes it, so while that artifact
 	// is behind the contract the violation wakes no agent. Once it's built for this revision and still disagrees, the
 	// consistency participant hands it to an owner (src/agents/recipients.ts routeWaiting).
-	waitsOn?: "board" | "firmware" | "chassis" | "enclosure" | "arm" | "armsim"
+	waitsOn?: "board" | "firmware" | "chassis" | "enclosure" | "arm" | "armsim" | "cncsim"
 }
 
 const OUTLINE_TOLERANCE_MM = 0.1
@@ -229,7 +231,7 @@ const MOUNTING_PAIR_MM = 5
 // quick: the board page's per-move check, which leaves out the smallest-board search (spaceChecks).
 // opts.boardStale: the board artifact was built from older inputs than the contract's (the consistency participant knows
 // from the build inputs). Its net findings are then judged against what the current contract generates.
-export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean; chassisStale?: boolean; armStale?: boolean; armsimStale?: boolean } = {}): Violation[] {
+export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean; chassisStale?: boolean; armStale?: boolean; armsimStale?: boolean; cncsimStale?: boolean } = {}): Violation[] {
 	const v: Violation[] = []
 	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics must change. "not run" (no QEMU, a stubbed
 	// run) wakes nobody: the report says "not proven in simulation". Not the firmware reviewer: the rover's firmware is
@@ -253,6 +255,10 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// the rover's failed drive is. A run of an older arm waits for the rerun.
 	if (a.armsim?.result === "fail")
 		v.push({ kind: "arm-sim", message: `the simulated pick-and-place failed: ${a.armsim.reason}${a.armsim.landed !== undefined ? ` (${a.armsim.landed} of ${a.armsim.attempts} landed${a.armsim.worstMm !== undefined ? `, worst ${a.armsim.worstMm} mm from the cup's centre` : ""})` : ""}`, fields: ["arm"], ...(opts.armsimStale ? { affects: [], waitsOn: "armsim" as const } : { affects: ["mechanics"] }) })
+	// The simulated CNC failed a check (wrong steps, an alarm missing): its axes, drivers and settings (cnc) are the
+	// mechanics engineer's lever. A run of an older design waits for the rerun.
+	if (a.cncsim?.result === "fail")
+		v.push({ kind: "cnc-sim", message: `the simulated machine (grblHAL in Renode) failed: ${a.cncsim.reason}`, fields: ["cnc"], ...(opts.cncsimStale ? { affects: [], waitsOn: "cncsim" as const } : { affects: ["mechanics"] }) })
 	// The case's own print check (py/enclosure.py print.json: thin walls, long bridges, overhangs, an open mesh, the lid's
 	// fit), which before 22 Nov 2026 only the report showed: the design settled with a case that wouldn't print.
 	if (a.enclosure?.printCheck && !a.enclosure.printCheck.ok)
