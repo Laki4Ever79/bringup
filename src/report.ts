@@ -1,3 +1,4 @@
+import { PRODUCT } from "./brand/names.js"
 import { planVsActual, planVsActualText } from "./runner/plan-actual.ts"
 import { standardsSection } from "./contract/standards.ts"
 import { BUILD_INPUTS } from "./agents/builders.ts"
@@ -256,7 +257,7 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 	const status = settled ? "settled" : s.stopped ? `STOPPED (${s.stopped}); not a verdict on the design` : missing.length > 0 ? `UNSETTLED — missing tools: ${missing.map((m) => m.tool).join(", ")}` : "UNSETTLED"
 	const stubbed = opts.noHardware || [s.artifacts.board, s.artifacts.enclosure, s.artifacts.firmware].some(isStub)
 	const lines = [
-		`# Bringup report`,
+		`# ${PRODUCT} report`,
 		``,
 		`Status: ${status} at contract revision ${snapshot.revision}`,
 		// A board older than the contract's last board-input change: the run ended before its rebuild finished, so the

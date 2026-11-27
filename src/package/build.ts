@@ -6,6 +6,7 @@
 //   ros/       an arm's URDF and ros2_control controllers (src/ros/urdf.ts armUrdf), with its printed links' masses
 //   firmware/  the built firmware and how to flash it
 //   assembly.md, bringup.md (bench bring-up), README.md (totals and what's missing)
+import { PRODUCT } from "../brand/names.js"
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { basename, dirname, join, resolve } from "node:path"
 import { enclosureMode, type ContractSnapshot } from "../contract/types.ts"
@@ -292,7 +293,7 @@ export async function packageCase(python: string, root: string, dir: string, out
 }
 
 // The first thing a mock design's package says (bringup-lead-2's wording, 27 Nov 2026): best effort, said plainly.
-export const SCRIPTED_BANNER = "> **Designed by Bringup's scripted agents (a free mock run): the review is scripted, not a model's. Check the board and parts before ordering.**"
+export const SCRIPTED_BANNER = `> **Designed by ${PRODUCT}'s scripted agents (a free mock run): the review is scripted, not a model's. Check the board and parts before ordering.**`
 
 export function assemblyOrder(s: ContractSnapshot, stls: string[], scripted = false): string {
 	const v = s.values, m = v.mechanics

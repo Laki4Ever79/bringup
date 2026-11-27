@@ -7,6 +7,7 @@
 //
 // Run plans live machine-wide in <bringup home>/run-plans/<id>.json, so the MCP server, the CLI it launches and the
 // page all see the same approval.
+import { PRODUCT } from "../brand/names.js"
 import { createHash, randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
@@ -124,7 +125,7 @@ export function planText(p: RunPlan): string {
 		`Estimate: ${mins(p.estimate.minutes)}, ${money(p.estimate.usd)} on ${p.provider ?? "no AI configured"}. ${p.estimate.basis}`,
 		...(p.runTime ? [p.runTime] : []),
 		open.length ? `The brief leaves open (the agents would assume this; say it in the brief to change it):\n${open.map((q) => `  - ${q.topic}: ${q.assumption}`).join("\n")}` : "The brief states its size, power, environment and job.",
-		"Bringup does its best and runs every check, but a first design isn't guaranteed to work; the clearer the brief, the fewer paid runs.",
+		`${PRODUCT} does its best and runs every check, but a first design isn't guaranteed to work; the clearer the brief, the fewer paid runs.`,
 		`This plan cost $${p.planCostUsd.toFixed(2)} (plain code, no model call).`,
 	].join("\n")
 }

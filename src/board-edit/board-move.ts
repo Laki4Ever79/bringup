@@ -4,6 +4,7 @@
 // run uses, and says what else it moves: on the board, in the case, across the system's cables. Nothing is sent until
 // the engineer sends the batch; then it is one change request through requests.jsonl, so the owners write it and the
 // run's checks and review see it once.
+import { PRODUCT } from "../brand/names.js"
 import { connectorBoxes, footprintFor, layoutBoard, moduleOf, supportParts } from "../codegen/circuit.ts"
 import { checkConsistency, type Violation } from "../contract/consistency.ts"
 import { enclosureMode, type Connector, type ContractSnapshot } from "../contract/types.ts"
@@ -165,7 +166,7 @@ export function checkMoves(s: ContractSnapshot, moves: Move[], brief = ""): Move
 	for (const m of moves) {
 		const was = movable[m.ref]
 		if (!was) {
-			problems.push({ kind: "not-movable", message: `${m.ref} can't be moved here. ${fixed[m.ref] ?? "It is placed by Bringup beside the part it serves, and moves with it."}`, system: false })
+			problems.push({ kind: "not-movable", message: `${m.ref} can't be moved here. ${fixed[m.ref] ?? `It is placed by ${PRODUCT} beside the part it serves, and moves with it.`}`, system: false })
 			continue
 		}
 		if (isRelease(m)) {

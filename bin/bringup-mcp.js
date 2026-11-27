@@ -5,17 +5,18 @@
 // `npx bringup-mcp bench-stream <design folder> <device>` / `bench-log <design folder> <log>`: the real robot's serial
 // log, saved in the design and read for what it shows (src/bench/cli.ts).
 import { register } from "tsx/esm/api"
+import { PRODUCT, STUDIO } from "../src/brand/names.js"
 
 register()
 if (["--help", "-h", "help"].includes(process.argv[2])) {
 	// A person typing it, not an MCP client (which starts it with no arguments): without this it started the server and
 	// waited silently on stdin.
-	console.log(`bringup-mcp: Bringup for Claude Code and other MCP clients.
+	console.log(`bringup-mcp: ${PRODUCT} for Claude Code and other MCP clients.
 
   npx bringup-mcp                      the MCP server on stdio (add it: claude mcp add bringup -- npx -y bringup-mcp)
   npx bringup-mcp add <client>         put Bringup in claude-desktop, cursor, vscode or windsurf's config (--print: show it)
   npx bringup-mcp setup [domain...]    list the hardware tools, or install board, case, firmware, sim or all
-  npx bringup-mcp login --url <studio> connect this machine to Bringup Studio; logout disconnects
+  npx bringup-mcp login --url <studio> connect this machine to ${STUDIO}; logout disconnects
   npx bringup-mcp bench-log <design> <log>   read a real board's serial log into its design
 
 Docs: https://github.com/Laki4Ever79/bringup/blob/main/docs/mcp.md`)

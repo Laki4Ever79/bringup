@@ -6,6 +6,7 @@
 //
 // Sizes and times were measured on a clean node:24-bookworm container (26 Nov 2026); they are what a person is told
 // before saying yes.
+import { PRODUCT } from "../brand/names.js"
 import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs"
@@ -228,7 +229,7 @@ export function setupListing(home = bringupHome()): string {
 	const rows = all.map((d) => `  ${d.padEnd(9)} ${(have.has(d) ? "installed" : "not installed").padEnd(14)} ${`${size(d)}, ~${DOMAINS[d].seconds} s`.padEnd(16)} ${SHORT[d]}`)
 	const missing = all.filter((d) => !have.has(d))
 	return [
-		`Bringup's tools, each installed once into ${home} (pinned versions, nothing system-wide):`,
+		`${PRODUCT}'s tools, each installed once into ${home} (pinned versions, nothing system-wide):`,
 		"",
 		...rows,
 		"           (firmware's first build then downloads the chip's compiler: ~1 GB more, 2.5-3 min, once)",

@@ -1,0 +1,32 @@
+# On demand only: the rover's simulation firmware booted in Espressif's QEMU under each icount setting, Windows beside
+# Linux (scripts/qemu-probe.ts). For the Windows drive in the OS smoke test: there the firmware panics or stalls after
+# its bootloader, while Linux and macOS boot it at once.
+name: QEMU probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      BRINGUP_HOME: ${{ runner.temp }}/bringup-home
+      BRINGUP_TOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: QEMU's libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libsdl2-2.0-0 libpixman-1-0 libgcrypt20 libglib2.0-0
+      - run: npm ci --no-audit --no-fund
+      - run: node bin/bringup-mcp.js setup firmware sim
+      - name: Boot the firmware under each icount setting (consoles in the log, verdicts in the summary)
+        run: npx tsx scripts/qemu-probe.ts 45

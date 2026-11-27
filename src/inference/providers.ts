@@ -9,6 +9,7 @@
 //
 // BRINGUP_PROVIDER, the older name, still works. Without either, the first provider whose key is set is used.
 // Providers with a default model use a generic pair of that provider's own models; the others ask for BRINGUP_AI_MODEL.
+import { PRODUCT } from "../brand/names.js"
 import { AnthropicMessages, GeminiGenerateContent, OpenAIChatCompletions, supportedModels } from "@mozaik-ai/core"
 
 export type Protocol = "openai-responses" | "openai-chat" | "anthropic" | "gemini" | "claude-code"
@@ -36,7 +37,7 @@ export const PROVIDERS: Record<string, Provider> = {
 	ollama: { id: "ollama", label: "Ollama (local models)", protocol: "openai-chat", baseURL: "http://localhost:11434/v1", baseVar: "OLLAMA_URL", local: true },
 	lmstudio: { id: "lmstudio", label: "LM Studio (local models)", protocol: "openai-chat", baseURL: "http://localhost:1234/v1", baseVar: "LMSTUDIO_URL", local: true },
 	compatible: { id: "compatible", label: "Any OpenAI-compatible server", protocol: "openai-chat", keyVar: "BRINGUP_AI_KEY", baseVar: "BRINGUP_AI_URL" },
-	bringup: { id: "bringup", label: "Bringup AI (included with a paid plan)", protocol: "openai-chat", keyVar: "BRINGUP_AI_KEY", baseVar: "BRINGUP_AI_URL", models: { strong: "bringup-strong", fast: "bringup-fast" } },
+	bringup: { id: "bringup", label: `${PRODUCT} AI (included with a paid plan)`, protocol: "openai-chat", keyVar: "BRINGUP_AI_KEY", baseVar: "BRINGUP_AI_URL", models: { strong: "bringup-strong", fast: "bringup-fast" } },
 }
 
 type Env = Record<string, string | undefined>
@@ -53,7 +54,7 @@ export function resolveProvider(env: Env = process.env): Provider | null {
 // What is missing for the chosen provider, in words a user can act on; null when it can run.
 export function providerProblem(env: Env = process.env): string | null {
 	const named = (env.BRINGUP_AI ?? env.BRINGUP_PROVIDER)?.trim()
-	if (named && !PROVIDERS[named]) return `BRINGUP_AI=${named} is not a provider Bringup knows: use one of ${Object.keys(PROVIDERS).join(", ")}`
+	if (named && !PROVIDERS[named]) return `BRINGUP_AI=${named} is not a provider ${PRODUCT} knows: use one of ${Object.keys(PROVIDERS).join(", ")}`
 	const p = resolveProvider(env)
 	if (!p) return `no AI is configured: set BRINGUP_AI to one of ${Object.keys(PROVIDERS).join(", ")} and that provider's key (for example OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY), or run a local model with BRINGUP_AI=ollama`
 	if (p.keyVar && !p.local && !set(env[p.keyVar])) return `${p.label} needs ${p.keyVar}${p.signup ? ` (get one at ${p.signup})` : ""}`

@@ -2,6 +2,7 @@
 // implemented and how it would manifest", and be given an option where there is one). Each entry says what was added,
 // how the engineer will notice it on the device, why, what it costs and how to change it. The report lists them
 // ("Added for you"), and the agents and the reviewer get the same lines in their design facts.
+import { PRODUCT } from "../brand/names.js"
 import { enclosureMode, type ContractSnapshot } from "./types.ts"
 import { bringupPads, debugPort, downloadStrap, MCU_EN_NET, TC2030, recoveryBootPin, recoveryPads, supportParts, usbWake, USB_SENSE_NET } from "../codegen/circuit.ts"
 import { DEFAULT_PERIOD_S, templateConstant } from "../codegen/firmware.ts"
@@ -24,7 +25,7 @@ export function addedForYou(s: ContractSnapshot, brief = ""): AddedItem[] {
 	// How the board is reached for reflashing, by who houses it.
 	const closed = mode === "case" ? ", case closed" : mode === "own" ? ", in your housing" : ""
 	const openUp = mode === "case" ? "open the case, " : mode === "own" ? "take the board out of your housing (or leave the pads reachable), " : ""
-	const toChangeCase = `requirements.enclosure: "case" (Bringup designs and prints one), "none" (a bare board) or "own" (your housing: Bringup writes the board's mechanical interface instead)`
+	const toChangeCase = `requirements.enclosure: "case" (${PRODUCT} designs and prints one), "none" (a bare board) or "own" (your housing: ${PRODUCT} writes the board's mechanical interface instead)`
 	if (s.values.requirements?.enclosure === undefined && s.values.outline)
 		items.push({
 			id: "case",
@@ -49,7 +50,7 @@ export function addedForYou(s: ContractSnapshot, brief = ""): AddedItem[] {
 			what: `Your own housing: a mechanical interface instead of a case`,
 			shows: `interface.md and interface.json beside the report: board size, mounting holes, the openings for connectors and buttons, lights, vents, the antenna's keep-out, the pads underneath and the label your housing must carry; board.step has every part's height. Regenerated on every change.`,
 			why: `requirements.enclosure is "own".`,
-			cost: `None from Bringup; your housing must match it.`,
+			cost: `None from ${PRODUCT}; your housing must match it.`,
 			change: `Set ${toChangeCase}.`,
 		})
 	const boot = recoveryBootPin(s)
@@ -158,7 +159,7 @@ export function addedForYouSection(s: ContractSnapshot, brief = ""): string[] {
 	return [
 		`## Added for you`,
 		``,
-		`Bringup added these without being asked. Each says how you'll notice it, and how to turn it off where you can.`,
+		`${PRODUCT} added these without being asked. Each says how you'll notice it, and how to turn it off where you can.`,
 		``,
 		`| What | How you'll notice it | Why | Cost | To change it |`,
 		`|---|---|---|---|---|`,
@@ -173,7 +174,7 @@ export function addedForYouFactLines(s: ContractSnapshot, brief = ""): string[] 
 	if (items.length === 0) return []
 	return [
 		"",
-		"## Added by Bringup (computed in code; the engineer sees this list in the report)",
+		`## Added by ${PRODUCT} (computed in code; the engineer sees this list in the report)`,
 		...items.map((i) => `- ${i.what}. ${i.shows} Why: ${i.why} Cost: ${i.cost}${i.change ? ` To change: ${i.change}` : ""}`),
 	]
 }

@@ -4,6 +4,7 @@
 // bench-stream shows the robot's serial lines as they come and saves them in the design (bench/session-*.jsonl, which
 // Bringup Studio's live view reads); Ctrl-C ends the session and prints what it shows. bench-log reads a saved log the
 // same way, beside the same design's simulated drive. No model, no cost.
+import { STUDIO } from "../brand/names.js"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 
@@ -26,7 +27,7 @@ export async function benchCli(argv: string[]): Promise<number> {
 		const { readToken } = await import("../connector/login.ts")
 		const studio = studioConnector(resolve(dir), basename(resolve(dir)), { offline, token: readToken(), log: (m) => console.error(`bringup: ${m}`) })
 		const s = streamSerial(device, dir, { baud: baudAt > 0 ? Number(argv[baudAt + 1]) : undefined, onLine: (l) => console.log(l), commands: true, onSent: (c) => console.log(`> ${c}`) })
-		console.error(`bringup: streaming ${device} into ${s.file}${studio ? ", and to Bringup Studio" : ""} (Ctrl-C to end)`)
+		console.error(`bringup: streaming ${device} into ${s.file}${studio ? `, and to ${STUDIO}` : ""} (Ctrl-C to end)`)
 		process.once("SIGINT", () => s.close())
 		await s.done.catch((e) => console.error(`bringup: ${e instanceof Error ? e.message : e}`))
 		await studio?.stop().catch(() => {})

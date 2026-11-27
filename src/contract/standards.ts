@@ -2,6 +2,7 @@
 // design has, which standard it follows, and whether that standard is open (anyone may read and implement it), one
 // vendor's, or our own. A vendor-locked or home-made interface names its open alternative, so the report can say what
 // a change to an open one would take. Plain code from the contract; no guesses about parts it doesn't carry.
+import { PRODUCT } from "../brand/names.js"
 import { debugPinout, usbRef } from "../codegen/circuit.ts"
 import type { ContractSnapshot } from "./types.ts"
 
@@ -65,7 +66,7 @@ export function standardsFactLines(s: ContractSnapshot): string[] {
 		"",
 		"## Interfaces and standards (open standards by default)",
 		"- Rule: where an open standard fits the job (anyone may read and implement it), choose it over a vendor's or a home-made one; keep a non-open one only when no open option fits, and say why in the part's or field's reason.",
-		...locked.map((r) => `- ${r.interface}: ${r.openness === "vendor" ? "one vendor's" : "Bringup's own"} (${r.standard}). Open alternative: ${r.alternative}`),
+		...locked.map((r) => `- ${r.interface}: ${r.openness === "vendor" ? "one vendor's" : `${PRODUCT}'s own`} (${r.standard}). Open alternative: ${r.alternative}`),
 	]
 }
 
@@ -73,7 +74,7 @@ export function standardsFactLines(s: ContractSnapshot): string[] {
 export function standardsSection(s: ContractSnapshot): string[] {
 	const rows = interfacesOf(s)
 	const locked = rows.filter((r) => r.openness !== "open")
-	const label = { open: "open", vendor: "one vendor's", ours: "Bringup's own" } as const
+	const label = { open: "open", vendor: "one vendor's", ours: `${PRODUCT}'s own` } as const
 	return [
 		"## Interfaces and standards",
 		"",

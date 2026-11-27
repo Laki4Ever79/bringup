@@ -1,3 +1,4 @@
+import { PRODUCT } from "../brand/names.js"
 import { mcuProfileOf } from "../mcu/profile.ts"
 import { armChecks } from "../arm/checks.ts"
 import { cncChecks } from "../cnc/checks.ts"
@@ -592,7 +593,7 @@ function mechanicsCheckOverRaw(motion: MotionTargets | undefined, mech: Mechanic
 	// A competition's rules (motion.rules: catalog/rules/<id>.json, rules/eurobot.ts), each finding citing its clause.
 	if (motion.rules) {
 		const rules = cat.rules?.[motion.rules]
-		if (!rules) push("mech-rules", `motion.rules is "${motion.rules}", a rule set Bringup doesn't have (catalog/rules: ${Object.keys(cat.rules ?? {}).join(", ") || "none"})`, ["architect"], ["motion"])
+		if (!rules) push("mech-rules", `motion.rules is "${motion.rules}", a rule set ${PRODUCT} doesn't have (catalog/rules: ${Object.keys(cat.rules ?? {}).join(", ") || "none"})`, ["architect"], ["motion"])
 		else for (const f of ruleChecks(rules, motion, mech, ms, pack, cat.mech, figures)) push("mech-rules", `${f.rule}: ${f.message}`, f.affects)
 	}
 	// The beacon support's mast stands on the plate with its socket: nothing else may stand where it does (the Eurobot

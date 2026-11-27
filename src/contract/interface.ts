@@ -1,6 +1,7 @@
 // The board's mechanical interface, for a design that goes into the engineer's own housing (requirements.enclosure
 // "own"): everything whoever designs that housing must match, in one frame. Written as interface.md (and .json)
 // beside the report, from the same placement the board generator uses, so it follows every board change.
+import { PRODUCT } from "../brand/names.js"
 import { antennaOverhang, bringupPads, micPorts, mountingHoles, placedByRole, recoveryPads, testPoints } from "../codegen/circuit.ts"
 import { MODULE_FCC_ID } from "./compliance.ts"
 import type { ContractSnapshot } from "./types.ts"
@@ -54,7 +55,7 @@ export function interfaceMarkdown(m: MechanicalInterface, boardStep: string | nu
 	return [
 		`# Mechanical interface`,
 		``,
-		`This board goes into your own housing (requirements.enclosure "own"), so Bringup made no case. This is what the housing has to match. It is regenerated from the design on every change.`,
+		`This board goes into your own housing (requirements.enclosure "own"), so ${PRODUCT} made no case. This is what the housing has to match. It is regenerated from the design on every change.`,
 		``,
 		`Frame: top view, origin at the board's bottom-left corner, x to the right, y up. Along an edge, an offset runs from the bottom (left and right edges) or from the left (top and bottom edges).`,
 		``,
@@ -88,7 +89,7 @@ export function interfaceMarkdown(m: MechanicalInterface, boardStep: string | nu
 		...(m.bottomPads.length ? [`- Leave them reachable if units will be tested or recovered in the housing, or plan to take the board out.`] : []),
 		``,
 		`## Label`,
-		`- ${m.label ? `Your housing must carry "${m.label}" (the radio module's certification), plus your own regulatory marks.` : "No module certification label from Bringup's catalog."}`,
+		`- ${m.label ? `Your housing must carry "${m.label}" (the radio module's certification), plus your own regulatory marks.` : `No module certification label from ${PRODUCT}'s catalog.`}`,
 		``,
 	].join("\n")
 }

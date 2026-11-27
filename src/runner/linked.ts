@@ -1,3 +1,4 @@
+import { PRODUCT } from "../brand/names.js"
 import { existsSync, mkdirSync, readdirSync, readFileSync, watch, writeFileSync, type FSWatcher } from "node:fs"
 import { dirname, join } from "node:path"
 import { createHuman, type Human } from "@mozaik-ai/core"
@@ -67,7 +68,7 @@ export function classifyView(view: View, yours: string | Buffer, base: string | 
 		if (e.connectors) fields.push("connectors")
 		if (mapped.length === 0) return kicadCore(String(yours)) === kicadCore(String(base)) ? { action: "resaved" } : { action: "drift", drift: ["board edits outside the outline and connector positions (tracks, silkscreen or other footprints)"] }
 	} else {
-		return { action: "drift", drift: [`${view.path} edited; Bringup has no reader for it`] }
+		return { action: "drift", drift: [`${view.path} edited; ${PRODUCT} has no reader for it`] }
 	}
 	if (mapped.length === 0) return { action: "drift", drift }
 	const movedSince = FIELDS.filter((f) => (baseSnap.versions[f] ?? 0) !== (now.versions[f] ?? 0))
@@ -394,7 +395,7 @@ export function linkedStatusLines(outDir: string): string[] {
 	if (!existsSync(p)) return []
 	const dir = JSON.parse(readFileSync(p, "utf8")).dir as string
 	const base = existsSync(dir) ? lastBringupCommit(dir) : null
-	if (!base) return [`Linked folder ${dir}: no Bringup commit yet.`]
+	if (!base) return [`Linked folder ${dir}: no ${PRODUCT} commit yet.`]
 	const snap = (rev: number): ContractSnapshot | null => {
 		const f = join(outDir, "contracts", `rev-${rev}.json`)
 		return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null
@@ -423,7 +424,7 @@ export function linkedStatusLines(outDir: string): string[] {
 		lines.push(`  modified  ${rel}  (${what})`)
 		for (const item of [...("mapped" in c ? c.mapped : []), ...("drift" in c ? c.drift : [])]) lines.push(`              ${item}`)
 	}
-	lines.push(`  ${clean} file(s) as Bringup committed them`)
+	lines.push(`  ${clean} file(s) as ${PRODUCT} committed them`)
 	return lines
 }
 

@@ -1,5 +1,6 @@
 // bringup adopt <repo> [--json out.json]: read an existing hardware repo (KiCad boards, firmware, case files), infer
 // the design contract it implies and list where the domains disagree. Read-only: it never writes into the repo.
+import { PRODUCT } from "../brand/names.js"
 import { appendFileSync, existsSync, readdirSync, statSync, writeFileSync } from "node:fs"
 import { basename, join, relative, resolve } from "node:path"
 import { firmwareVariants, type FirmwareVariant } from "./firmware.ts"
@@ -158,7 +159,7 @@ export function renderCheck(results: CheckResult[]): string {
 export function markdown(r: ReturnType<typeof adopt>, results: CheckResult[] | null, contractDir: string): string {
 	const out: string[] = []
 	const failing = results?.filter((x) => x.violations.length || x.missing) ?? []
-	out.push(`## Bringup adopt: ${r.repo}`, "")
+	out.push(`## ${PRODUCT} adopt: ${r.repo}`, "")
 	if (results) out.push(impactMarkdown(results, r, contractDir))
 	if (!results) {
 		out.push(`No agreed contract in \`${contractDir}\` yet, so nothing gates this change. To agree on the design as it is now, run`, "", "```", `npx tsx src/adopt/cli.ts . --contract ${contractDir}`, "```", "", "and commit the folder. From then on, a change that breaks it fails this check.", "")
@@ -205,7 +206,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 		console.log(results ? renderCheck(results) : `no agreed contract in ${checkDir}: run --contract ${checkDir} and commit it`)
 		if (md) appendFileSync(md, markdown(r, results, checkDir))
 		// The pull-request comment's body (adopt/check.sh posts it): the impact alone, behind a marker so one comment is updated.
-		if (impactMd) writeFileSync(impactMd, `<!-- bringup-impact -->\n## Bringup: change impact\n\n${impactMarkdown(results, r, checkDir)}\nThe full report is in this check's job summary.\n`)
+		if (impactMd) writeFileSync(impactMd, `<!-- bringup-impact -->\n## ${PRODUCT}: change impact\n\n${impactMarkdown(results, r, checkDir)}\nThe full report is in this check's job summary.\n`)
 		process.exit(results?.some((r) => r.violations.length > 0 || r.missing) ? 1 : 0)
 	}
 	const r = adopt(repo, { variant })

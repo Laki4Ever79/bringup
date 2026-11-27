@@ -1,3 +1,4 @@
+import { STUDIO } from "./brand/names.js"
 import { evidenceDir, LEVELS, moduleStatus } from "./modules/library.ts"
 import { cliPaidGate } from "./system/plan-gate.ts"
 import { createInterface } from "node:readline/promises"
@@ -454,7 +455,7 @@ export async function main(argv: string[], deps: { detect?: (root: string) => Pr
 	// Bringup Studio: the run streams there when this machine is logged in (bringup login) and --offline isn't given. The
 	// connector never fails the run: Studio down only delays what it shows.
 	const studio = studioConnector(outDir, basename(outDir), { offline, token: readToken(), log: (m) => console.warn(`bringup: ${m}`) })
-	if (studio) console.log(`bringup: streaming to Bringup Studio (${readToken()!.url}); --offline to keep this run local`)
+	if (studio) console.log(`bringup: streaming to ${STUDIO} (${readToken()!.url}); --offline to keep this run local`)
 	const result = await runDesign({ brief: readFileSync(args.briefPath, "utf8"), mock: args.mock, outDir, env, noHardware: args.noHardware, ...(args.noScorecard ? { noScorecard: true } : {}), ...(args.stubMissing ? { stubMissing: true } : {}), review: args.review, engineerApproval: args.engineerApproval, maxReviewRounds: args.reviewRounds, ...(args.maxRevisions ? { maxRevisions: args.maxRevisions } : {}), bench, changes: args.changes, changeDelayMs: args.changeDelayMs, ...(args.stay ? { stay: { until } } : {}), ...(args.link ? { link: resolve(args.link) } : {}), ...(seed ? { seed } : {}) })
 	await studio?.stop()
 	console.log(`\n${result.settled ? "settled" : "UNSETTLED"} at revision ${result.revision} with ${result.violations.length} violation(s)${result.held?.length ? `, held by ${result.held.length} more (report: "Held by")` : ""}\nreport: ${result.reportPath}`)
