@@ -10,14 +10,16 @@ export interface RoverLog {
 	boots: { reason: string; line: number; text: string }[]
 	ready: number[]
 	r: RLine[]
-	odo: { ms: number; x: number; y: number; th: number }[]
+	odo: { ms: number; x: number; y: number; th: number; line: number }[]
+	// "HOLD <ms> <mm>": the distance it reads while holding still (no host driving it).
+	hold: { ms: number; distMm: number; line: number }[]
 	gotos: { x: number; y: number; tx: number; ty: number; line: number; text: string }[]
 	panics: { line: number; text: string }[]
 	lines: number
 }
 
 export function parseRoverLog(text: string): RoverLog {
-	const out: RoverLog = { boots: [], ready: [], r: [], odo: [], gotos: [], panics: [], lines: 0 }
+	const out: RoverLog = { boots: [], ready: [], r: [], odo: [], hold: [], gotos: [], panics: [], lines: 0 }
 	const ls = text.split(/\r?\n/)
 	out.lines = ls.length
 	ls.forEach((raw, i) => {
@@ -28,7 +30,8 @@ export function parseRoverLog(text: string): RoverLog {
 		else if (l === "ROVER ready") out.ready.push(n)
 		else if ((m = /^R (\d+) (-?\d+) (-?[\d.]+) (-?[\d.]+)(?: E (-?\d+) (-?\d+))?(?: H (-?\d+))?$/.exec(l)))
 			out.r.push({ ms: +m[1], distMm: +m[2], dutyL: +m[3], dutyR: +m[4], enc: m[5] !== undefined ? [+m[5], +m[6]] : null, headingMrad: m[7] !== undefined ? +m[7] : null, line: n })
-		else if ((m = /^ODO (\d+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$/.exec(l))) out.odo.push({ ms: +m[1], x: +m[2], y: +m[3], th: +m[4] })
+		else if ((m = /^ODO (\d+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$/.exec(l))) out.odo.push({ ms: +m[1], x: +m[2], y: +m[3], th: +m[4], line: n })
+		else if ((m = /^HOLD (\d+) (-?\d+)$/.exec(l))) out.hold.push({ ms: +m[1], distMm: +m[2], line: n })
 		else if ((m = /^GOTO done (-?[\d.]+) (-?[\d.]+) \(target (-?[\d.]+) (-?[\d.]+)\)$/.exec(l))) out.gotos.push({ x: +m[1], y: +m[2], tx: +m[3], ty: +m[4], line: n, text: l })
 		else if (/Guru Meditation Error|abort\(\) was called|Backtrace:/.test(l)) out.panics.push({ line: n, text: l })
 	})

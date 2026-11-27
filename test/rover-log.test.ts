@@ -34,9 +34,10 @@ test("the parser reads the firmware's lines: boots, ready, R with encoders and h
 	assert.deepEqual(l.boots.map((b) => b.reason), ["POWERON"])
 	assert.deepEqual(l.ready, [4])
 	assert.deepEqual(l.r[0], { ms: 120, distMm: 340, dutyL: 0.5, dutyR: 0.5, enc: [10, 12], headingMrad: -15, line: 5 })
-	assert.deepEqual(l.odo[0], { ms: 500, x: 12.5, y: -3, th: 0.02 })
+	assert.deepEqual(l.odo[0], { ms: 500, x: 12.5, y: -3, th: 0.02, line: 6 })
 	assert.equal(l.gotos[0].tx, 600)
 	assert.equal(l.panics.length, 1)
+	assert.deepEqual(parseRoverLog("HOLD 4323 286\n").hold, [{ ms: 4323, distMm: 286, line: 1 }])
 })
 
 test("brownout: a reset for low supply mid-run fires, quoted; a power-on boot alone doesn't", () => {
