@@ -611,6 +611,24 @@ Or we can offer sending them the full package with all elements, mechanical or 3
       zero-prerequisite path for each OS (only Node and Docker needed), the first-run download stated up front, and a
       fresh-machine test of the npx path on each release.
 
+- [ ] **Only the dependencies a user's designs need, pulled when they need them** (the user, 27 Nov 2026, verbatim: "we
+      should not clutter user's PC with our MCP with all the dependencies needed ever, since there are large
+      dependencies, only what they need. Like if they want to build CNCs, only they pull needed deps"). Today: setup is
+      split into four domains (board, case, firmware, sim; src/setup/domains.ts), and a firmware build fetches its chip's
+      platform on first use, but the machine-kind extras are not split: a CNC's grblHAL clone and Renode (simulated
+      machine), FluidNC's own pinned platform (measured 27 Nov: +2.86 GB in ~/.platformio, its precompiled ESP-IDF
+      libraries alone 1.94 GB unpacked), the STM32 platform, a robot's MuJoCo and QEMU. Do: one dependency pack per kind
+      of design and per chip (CNC/grblHAL, CNC/FluidNC, robot sim, each MCU family's platform), installed only when a
+      design of that kind first needs it, with its measured size and time stated and asked before downloading (the MCP's
+      setup tool and the plan both say it); nothing a design doesn't use is pulled by `setup` or `npx bringup-mcp`; a
+      way to list what is installed with its size and remove a pack; and a fresh-machine test that a logger-only user
+      never downloads a CNC's or robot's packs. The other half, as binding (the user, same day, verbatim: "but also make
+      sure you always get what you need to perfrom as good as possible"): lean never means a worse result. When a design
+      needs a pack, Bringup gets it (after saying its size) rather than stubbing a build or skipping a check; a run that
+      would be better with a pack it lacks says which one and what it would add; and the fresh-machine test also checks
+      that a CNC design on a clean machine ends with every build its kind has (board, firmware, simulated machine), not
+      stubs.
+
 ## Lessons from text-to-CAD tools (the user, 19 Nov 2026: "proceed with implementation")
 
 A read-only study (bringup-cad, 19 Nov) of text-to-cad (earthtojake, MIT, v0.11.13), cadsmith (JonFermin, MIT) and
