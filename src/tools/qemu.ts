@@ -40,6 +40,11 @@ export function qemuBinary(root: string, t: QemuTarget): string | null {
 
 // The arguments every run shares: the machine, virtual time (-icount 3: don't read timings from it), the flash image,
 // and the watchdog off (a lock-step bridge holds the firmware between steps).
+// Windows: icount's sleep off. With it on (QEMU's default) an idle vCPU's virtual time is paced to the host's clock, and
+// on GitHub's Windows runner the firmware never got past its bootloader ("entry 0x403cbf10", then nothing for 60 s;
+// Linux and macOS print "ROVER ready" at once): Windows' coarse timers. Off, idle time is skipped; the drive is
+// lock-stepped over UART1, so nothing reads wall time. Linux and macOS keep the setting their runs were proven with.
+const ICOUNT = process.platform === "win32" ? "shift=3,sleep=off" : "3"
 export function qemuBaseArgs(t: QemuTarget, image: string): string[] {
-	return ["-machine", t.machine, "-icount", "3", "-drive", `file=${image},if=mtd,format=raw`, "-global", `driver=timer.${t.machine}.timg,property=wdt_disable,value=true`]
+	return ["-machine", t.machine, "-icount", ICOUNT, "-drive", `file=${image},if=mtd,format=raw`, "-global", `driver=timer.${t.machine}.timg,property=wdt_disable,value=true`]
 }

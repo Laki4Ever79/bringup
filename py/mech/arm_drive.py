@@ -154,7 +154,28 @@ def with_model_defaults(spec):
     return out
 
 
+# The bodies whose poses the trajectory records (py/arm_pictures.py moves each posed STL group by its body's), and the
+# sampling interval in simulated seconds.
+TRACKED = ("turntable", "upper-arm", "forearm", "wrist", "gripper-body", "finger-left", "finger-right", "cube")
+SAMPLE_S = 0.05
+
+
+def _pose(model, data, name):
+    b = model.body(name).id
+    return [round(float(v), 5) for v in (*data.xpos[b], *data.xquat[b])]
+
+
 def run(spec, port, out_dir, limit_s=600.0, firmware_wait_s=60.0, tick_wait_s=10.0):
+    """The pick-and-place; also writes trajectory.json (the tracked bodies' poses over time, the cup's walls) once the
+    firmware has run, for the pictures of it."""
+    rec = {"frames": []}
+    r = _run(spec, port, out_dir, limit_s, firmware_wait_s, tick_wait_s, rec)
+    if rec["frames"]:
+        (Path(out_dir) / "trajectory.json").write_text(json.dumps({k: v for k, v in rec.items()}))
+    return r
+
+
+def _run(spec, port, out_dir, limit_s, firmware_wait_s, tick_wait_s, rec):
     try:
         spec = with_model_defaults(spec)
     except (ImportError, AttributeError) as e:
@@ -177,6 +198,18 @@ def run(spec, port, out_dir, limit_s=600.0, firmware_wait_s=60.0, tick_wait_s=10
         data.qpos[cube_q + 3:cube_q + 7] = [1, 0, 0, 0]
         data.qvel[cube_v:cube_v + 6] = 0
         mujoco.mj_forward(model, data)
+
+    # The trajectory's fixed parts: each tracked body at rest (the posed STLs' pose), the cup's wall boxes, the cube's size.
+    tracked = [n for n in TRACKED if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n) >= 0]
+    rec["bodies"] = tracked
+    # The joints' angles too (degrees, spec joints order): py/arm_pictures.py poses the printed parts with py/arm.py's
+    # own kinematics, the frame the posed STLs were made in.
+    rec["joints"] = list(spec["joints"])
+    jq = [model.jnt_qposadr[model.joint(n).id] for n in spec["joints"]]
+    rec["rest"] = {n: _pose(model, data, n) for n in tracked}
+    rec["cup"] = [{"pos": [round(float(v), 5) for v in data.geom_xpos[g]], "mat": [round(float(v), 5) for v in data.geom_xmat[g]], "size": [round(float(v), 5) for v in model.geom_size[g]]} for g in range(model.ngeom) if (model.geom(g).name or "").startswith("cup-")]
+    rec["cubeHalf"] = [round(float(v), 5) for v in model.geom_size[model.geom("cube").id]] if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "cube") >= 0 else [0.0125] * 3
+    next_sample = 0.0
 
     sock = _connect(port, firmware_wait_s)
     if sock is None:
@@ -238,6 +271,9 @@ def run(spec, port, out_dir, limit_s=600.0, firmware_wait_s=60.0, tick_wait_s=10
         # MuJoCo resets the state when it blows up (NaN accelerations): a model problem, never a quiet restart.
         if data.warning[mujoco.mjtWarning.mjWARN_BADQACC].number > 0:
             return _result(out_dir, "fail", f"the simulation went unstable at {data.time:.3f} s (MuJoCo: bad accelerations): a model problem", stats())
+        if data.time >= next_sample:
+            rec["frames"].append([round(data.time, 3), [_pose(model, data, n) for n in tracked], [round(math.degrees(float(data.qpos[q])), 2) for q in jq]])
+            next_sample = data.time + SAMPLE_S
         # A dropped cube: at rest, away from where it was placed, the gripper open.
         pos = data.xpos[cube.id]
         speed = float(np.linalg.norm(data.qvel[cube_v:cube_v + 3]))

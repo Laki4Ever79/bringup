@@ -111,6 +111,17 @@ class ArmDriveTest(unittest.TestCase):
         # Lock-step: one "S <ms>" per tick, 20 ms apart.
         self.assertEqual([s[0] for s in seen[:3]], ["S", "S", "S"])
         self.assertEqual(int(seen[1][1]) - int(seen[0][1]), 20)
+        # The trajectory for the pictures (py/arm_pictures.py): the tracked bodies this model has (the cube), sampled
+        # every 50 ms of simulated time, each pose x y z and a quaternion.
+        with open(os.path.join(self.dir, "trajectory.json")) as f:
+            t = json.load(f)
+        self.assertEqual(t["bodies"], ["cube"])
+        self.assertEqual(len(t["rest"]["cube"]), 7)
+        self.assertGreater(len(t["frames"]), 50)
+        self.assertAlmostEqual(t["frames"][1][0] - t["frames"][0][0], 0.06, delta=0.011)
+        self.assertEqual(t["cubeHalf"], [0.0125] * 3)
+        self.assertEqual(t["joints"], JOINTS)
+        self.assertEqual(len(t["frames"][0][2]), 5)
 
     def test_without_a_spawn_new_cubes_go_where_the_model_put_the_first(self):
         # The toy's cube starts over the cup: every replacement does too.

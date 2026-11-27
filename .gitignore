@@ -25,3 +25,6 @@ __pycache__/
 *.pyc
 catalog/learned/
 .cache/
+
+# MuJoCo writes this beside a test that makes a model go unstable on purpose (py/tests/test_mech_arm_drive.py)
+MUJOCO_LOG.TXT

@@ -4,7 +4,7 @@
 // it needs neither the hosted page nor a browser (the open-core split, 25 Nov 2026: before, the pictures were
 // screenshots of the page's 3D view in headless Chromium, and an install without the page got none).
 import { execFile } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { promisify } from "node:util"
 import { ASSEMBLY_STEPS } from "../geometry/assembly-steps.js"
@@ -69,7 +69,8 @@ export async function casePictures(python: string, root: string, enclosureDir: s
 // the robot (start, farthest, end) and a GIF of the whole drive. Files under drive/ in outDir.
 export async function drivePictures(python: string, root: string, chassisDir: string, driveDir: string, outDir: string, log: (m: string) => void = () => {}): Promise<AssemblyPictures> {
 	if (!existsSync(join(chassisDir, "spec.json")) || !existsSync(join(chassisDir, "chassis.stl"))) return { files: [], note: `no drive pictures: ${chassisDir} holds no built chassis` }
-	if (!existsSync(join(driveDir, "trajectory.json"))) return { files: [], note: `no drive pictures: ${driveDir} holds no trajectory (the drive didn't run)` }
+	// drive.py writes an empty trajectory when the firmware never answered: say so, not that the drawing failed.
+	if (!existsSync(join(driveDir, "trajectory.json")) || readFileSync(join(driveDir, "trajectory.json"), "utf8").trim() === "[]") return { files: [], note: `no drive pictures: the drive didn't run (${driveDir} holds no trajectory)` }
 	const dir = join(outDir, "drive")
 	try {
 		const { stdout } = await exec(python, [join(root, "py", "drive_pictures.py"), chassisDir, driveDir, dir], { timeout: 600_000 })
@@ -78,5 +79,22 @@ export async function drivePictures(python: string, root: string, chassisDir: st
 		return { files, note: null }
 	} catch (e) {
 		return { files: [], note: `no drive pictures: py/drive_pictures.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
+	}
+}
+
+// The arm's simulated pick-and-place (py/arm_pictures.py): the arm's posed parts moved to each recorded set of joint
+// angles with py/arm.py's own kinematics, the cup and the cube: three key frames (pick, carry, drop), every landing from
+// above and a GIF of the first cycle. Files under armsim/ in outDir.
+export async function armSimPictures(python: string, root: string, posedDir: string, simDir: string, outDir: string, log: (m: string) => void = () => {}): Promise<AssemblyPictures> {
+	if (!existsSync(join(posedDir, "groups.json"))) return { files: [], note: `no pick-and-place pictures: ${posedDir} holds no posed arm` }
+	if (!existsSync(join(simDir, "trajectory.json"))) return { files: [], note: `no pick-and-place pictures: ${simDir} holds no trajectory (the simulation didn't run, or ran before trajectories were recorded)` }
+	const dir = join(outDir, "armsim")
+	try {
+		const { stdout } = await exec(python, [join(root, "py", "arm_pictures.py"), posedDir, simDir, dir], { timeout: 600_000 })
+		const files = stdout.split(/\r?\n/).map((f) => f.trim()).filter((f) => /\.(png|gif)$/.test(f)).map((f) => `armsim/${f}`)
+		log(`pick-and-place pictures: ${files.length} in ${dir}`)
+		return { files, note: null }
+	} catch (e) {
+		return { files: [], note: `no pick-and-place pictures: py/arm_pictures.py stopped: ${String((e as { stderr?: string }).stderr || e).trim().split("\n").pop()}` }
 	}
 }

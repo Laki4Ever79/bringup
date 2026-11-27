@@ -1,6 +1,6 @@
 import { providerProblem } from "../inference/providers.ts"
 import { continueSeed } from "../runner/continue.ts"
-import { armPictures, assemblyPictures, casePictures, drivePictures } from "../package/assembly-pictures.ts"
+import { armPictures, armSimPictures, assemblyPictures, casePictures, drivePictures } from "../package/assembly-pictures.ts"
 import { approveRunPlan, makeRunPlan, paidStartRefusal, planText, readRunPlan } from "../system/plan-gate.ts"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
@@ -558,12 +558,12 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 	server.registerTool(
 		"get_pictures",
 		{
-			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). A robot's simulated drive (its firmware in QEMU driving the MuJoCo model) comes back as its verdict; with drive: true also as pictures of the robot driving the course and a GIF (30-90 s). Every file is also listed by path.",
+			description: "Pictures of a run's design, to show the user: the newest board's 3D picture (returned as an image), its PCB and schematic (SVG paths), and with stills: true 3D stills of the board in its case, or of a robot or arm (needs the case tools; 10-25 s). A robot's simulation (its firmware in QEMU driving the MuJoCo model: a rover's drive, an arm's pick-and-place) comes back as its verdict; with drive: true also as pictures of it moving and a GIF (30-90 s). Every file is also listed by path.",
 			inputSchema: {
 				runId: z.string(),
 				board: BOARD,
 				stills: z.boolean().optional().describe("Render 3D stills into <run>/pictures (py/stills.py, the case tools): the board in its case, or a robot or arm step by step. Default false."),
-				drive: z.boolean().optional().describe("Render the robot's simulated drive into <run>/pictures/drive (py/drive_pictures.py, the case tools): the course from above with its path, three frames following the robot, and drive.gif. Default false."),
+				drive: z.boolean().optional().describe("Render the robot's simulation into <run>/pictures (the case tools): a rover's drive (drive/: the course from above with its path, three frames following the robot, drive.gif) or an arm's pick-and-place (armsim/: pick, carry, drop, the landings from above, arm.gif). Default false."),
 			},
 		},
 		async ({ runId, board, stills, drive }) => {
@@ -614,8 +614,35 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 					notes.push(`the drive's result (${join(driveRev, "drive.json")}) couldn't be read`)
 				}
 			}
+			// An arm's pick-and-place (py/mech/arm_drive.py): its verdict always too.
+			const armsimRev = newest(join(b.dir, "armsim"), "arm.json")
+			let armVerdict: Record<string, unknown> | undefined
+			if (armsimRev) {
+				try {
+					const a = JSON.parse(readFileSync(join(armsimRev, "arm.json"), "utf8")) as { result: string; reason?: string; landed?: number; attempts?: number; worstMm?: number; cycleS?: number[] }
+					armVerdict = { result: a.result, reason: a.reason, ...(a.landed !== undefined ? { landed: a.landed, attempts: a.attempts, worstMm: a.worstMm } : {}), ...(a.cycleS?.length ? { cycleS: a.cycleS } : {}) }
+				} catch {
+					notes.push(`the pick-and-place's result (${join(armsimRev, "arm.json")}) couldn't be read`)
+				}
+			}
 			const drivePngs: { what: string; path: string }[] = []
-			if (drive) {
+			const armPosed = newest(join(b.dir, "arm"), join("arm", "posed", "groups.json"))
+			const armTraj = newest(join(b.dir, "armsim"), "trajectory.json")
+			if (drive && (armPosed || armsimRev) && !newest(join(b.dir, "chassis"), "chassis.stl")) {
+				const env = await (deps.detect ?? (() => detectEnvironment(root)))()
+				if (!armPosed || !armTraj) notes.push(!armPosed ? "no pick-and-place pictures: the arm's parts weren't built" : "no pick-and-place pictures: the arm's simulation didn't run (it needs `npx bringup-mcp setup firmware sim`, after your user says yes)")
+				else if (!env.python) notes.push("no pick-and-place pictures: they need the case tools (`npx bringup-mcp setup case`, after your user says yes)")
+				else {
+					const out = join(b.dir, "pictures")
+					const p = await armSimPictures(env.python, root, join(armPosed, "arm", "posed"), armTraj, out)
+					if (p.note) notes.push(p.note)
+					for (const f of p.files) {
+						const entry = { what: f.endsWith(".gif") ? "the pick-and-place, animated (GIF)" : `pick-and-place: ${basename(f, ".png").replace(/^arm-(\d-)?/, "").replace(/[-_]/g, " ")}`, path: join(out, f) }
+						files.push(entry)
+						if (/arm-(1-pick|3-drop)\.png$/.test(f)) drivePngs.push(entry)
+					}
+				}
+			} else if (drive) {
 				const env = await (deps.detect ?? (() => detectEnvironment(root)))()
 				const chassis = newest(join(b.dir, "chassis"), "chassis.stl")
 				const trajRev = newest(join(b.dir, "drive"), "trajectory.json")
@@ -642,7 +669,7 @@ export function createBringupMcpServer(deps: BringupMcpDeps): McpServer {
 			const shown = [pngs[0], finished, ...drivePngs].filter((f): f is { what: string; path: string } => Boolean(f) && statSync(f!.path).size <= 2_000_000)
 			return {
 				content: [
-					{ type: "text" as const, text: JSON.stringify({ runId, files, ...(driveVerdict ? { drive: driveVerdict } : {}), ...(notes.length ? { notes } : {}) }, null, 2) },
+					{ type: "text" as const, text: JSON.stringify({ runId, files, ...(driveVerdict ? { drive: driveVerdict } : {}), ...(armVerdict ? { pickAndPlace: armVerdict } : {}), ...(notes.length ? { notes } : {}) }, null, 2) },
 					...shown.map((f) => ({ type: "image" as const, data: readFileSync(f.path).toString("base64"), mimeType: "image/png" })),
 				],
 			}

@@ -644,6 +644,12 @@ test("get_pictures returns the newest board's 3D picture as an image and lists e
 		assert.equal(driven.drive.topSpeedMps, 0.41)
 		assert.match(driven.notes.join(" "), /no drive pictures: this design has no robot chassis built/)
 		assert.equal(JSON.parse((await mcp.call("get_pictures", { runId: "bare" })).text).drive, undefined)
+		// An arm's pick-and-place: its verdict too; pictures need its posed parts.
+		mkdirSync(join(outRoot, "bare", "armsim", "rev-2"), { recursive: true })
+		writeFileSync(join(outRoot, "bare", "armsim", "rev-2", "arm.json"), JSON.stringify({ result: "pass", reason: "5 of 5 cubes landed in the cup", landed: 5, attempts: 5, worstMm: 7.2, cycleS: [4.3] }))
+		const arm = JSON.parse((await mcp.call("get_pictures", { runId: "bare", drive: true })).text)
+		assert.deepEqual(arm.pickAndPlace, { result: "pass", reason: "5 of 5 cubes landed in the cup", landed: 5, attempts: 5, worstMm: 7.2, cycleS: [4.3] })
+		assert.match(arm.notes.join(" "), /no pick-and-place pictures: the arm's parts weren't built/)
 	} finally {
 		await mcp.close()
 	}
