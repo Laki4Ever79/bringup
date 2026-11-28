@@ -19,6 +19,23 @@ Runs on **Linux, macOS and Windows**: each release is installed fresh and tested
 
 <sub>A recorded run with the real tools, shown in Bringup's hosted page; the waiting is cut. ▶ [3-minute demo video](https://youtu.be/b0B6R5KyZ64)</sub>
 
+### What your AI client shows you
+
+![One picture of a whole robot design: the routed board, the robot assembled with its printed chassis, wheels and board, and its simulated drive from above with the path it took, labelled pass](docs/img/overview-rover.png)
+
+<sub>`get_pictures` with `overview: true`, from a recorded run (a Eurobot-style rover, real models through Claude Code).</sub>
+
+![A two-wheeled rover before and after "make it 2 cm narrower": the board is unchanged; the assembled robot and its simulated drive are framed as changed; under them, one line: drive track 110 → 90 mm, plate 96 → 76 mm, drive pass → pass](docs/img/change-narrower.png)
+
+<sub>`get_pictures` with `compare: true`, from a scripted run of the plain two-wheeled rover.</sub>
+
+- **One image of the whole design**: the routed board, the robot assembled, its own firmware driving it in simulation.
+- **What a change did**: before above after, the parts it touched framed, the exact values in one line.
+- **Drawn from your run's own files**, on your machine: the board render, the printed parts, the simulated drive.
+- **A change that can't be made says why** (a robot already at its brief's size, asked to grow), never a silent no-op.
+- **Free**: scripted (mock) runs make all of it without a model or an API key, once `npx bringup-mcp setup` has
+  installed the tools.
+
 ## Free and open, plus Bringup Studio
 
 The engine is open source and free: it runs on your machine and every file it makes is yours. Bringup Studio, the
