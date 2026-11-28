@@ -75,8 +75,11 @@ function recordedBoardRuns(outRoot: string): BoardRun[] {
 
 // With a kind (the brief's, contract/design-kind.ts briefKind), only runs of that kind count: a CNC's plan said 2-7 min
 // from rovers and loggers, and real CNC run 2 took 84 (27 Nov 2026). None of that kind: no range, and the basis says so.
+// The real runs kept under out/real-runs count too: the plan reads <checkout>/out, and the runs worth learning from are
+// filed there (real CNC run 3, 27 Nov 2026: the plan said "other kinds' 2-7 min" with 33 real runs one folder down).
 export function estimate(plan: Plan, outRoot: string, kind?: DesignKind): { minutes: [number, number] | null; usd: [number, number] | null; basis: string } {
-	const all = recordedBoardRuns(outRoot)
+	const kept = join(outRoot, "real-runs")
+	const all = [...recordedBoardRuns(outRoot), ...(existsSync(kept) ? recordedBoardRuns(kept) : [])]
 	const runs = kind ? all.filter((r) => r.kind === kind) : all
 	if (kind && all.length && !runs.some((r) => r.minutes !== null)) {
 		const others = all.map((r) => r.minutes).filter((m): m is number => m !== null)

@@ -299,3 +299,15 @@ Each failure on the way, with its general fix.
   script needs the clone's .git. The board's config.yaml is not compiled in: FluidNC reads it from LittleFS
   (FluidNC/data). Still open: the firmware builder building FluidNC for a fluidnc machine (today it builds Bringup's
   Arduino product firmware and writes config.yaml beside it), and flashing a real ESP32.
+- 28 Nov, real run 3 (out/real-runs/cc-cnc-3, the user's yes: briefs/cnc.md, now pinned to grblHAL on an STM32F411,
+  b86ed425; every build): UNSETTLED at revision 28 with 0 violations, held by the board and one pending change, at the
+  60-min cap; 13.87 M input and 0.60 M output tokens, $0 (API-equivalent $10.35). grblHAL in Renode passed (30 s),
+  the first real run to prove the simulated machine. The board never built (revisions 14-28): the Freerouting
+  fallback wrote the catalog jack's footprint as its name ("dc091a250"), and tscircuit refused it. That's
+  bringup-board's fix (a connector's footprint skipped Bringup's own land patterns). Lessons → fixes (mine):
+  - the agents read that refusal as theirs and proposed a stand-in footprint 5 times: a build error Bringup caused (a
+    catalog footprint the router can't read, a supplier lookup) is left out of what an agent sees, and wakes no one
+    when nothing else is left (agents/code-faults.ts);
+  - the architect grew the board 100×80 → 140×100 for power-plane widths on a layout that never built: the plane check
+    skips a board whose build failed;
+  - the plan said "other kinds' 2-7 min": the estimate reads out/real-runs as well.

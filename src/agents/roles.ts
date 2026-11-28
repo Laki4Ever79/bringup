@@ -7,6 +7,7 @@ import { searchParts } from "../tools/parts-search.ts"
 import { CASE_SHAPE } from "../contract/case.ts"
 import { ROUTING_FAILURE } from "../contract/space.ts"
 import { WAITING_ON_CONTRACT } from "../contract/consistency.ts"
+import { agentFacingError } from "./code-faults.ts"
 import { CONNECTIVITY_SHAPE } from "../contract/connectivity.ts"
 import { createRoleAgent, latestCheck, requestTurn, startTurn } from "./common.ts"
 import { recipients } from "./recipients.ts"
@@ -42,8 +43,11 @@ function onBuildFailed(kinds: ArtifactKind[], owns: string): SituationHandler {
 		processor: {
 			apply: ({ event, participant }) => {
 				if (!isEvent(event, "artifact.failed")) return
-				const { kind, revision, error } = event.payload
-				if (TOOL_MISSING.test(String(error)) || WAITING_ON_CONTRACT.test(String(error))) return
+				const { kind, revision } = event.payload
+				if (TOOL_MISSING.test(String(event.payload.error)) || WAITING_ON_CONTRACT.test(String(event.payload.error))) return
+				// Bringup's own faults are left out; a failure that was only those wakes nobody (agents/code-faults.ts).
+				const error = agentFacingError(String(event.payload.error))
+				if (error === null) return
 				requestTurn(
 					participant as Agent,
 					`build-failed@${kind}@${revision}`,

@@ -231,7 +231,7 @@ const MOUNTING_PAIR_MM = 5
 // quick: the board page's per-move check, which leaves out the smallest-board search (spaceChecks).
 // opts.boardStale: the board artifact was built from older inputs than the contract's (the consistency participant knows
 // from the build inputs). Its net findings are then judged against what the current contract generates.
-export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean; chassisStale?: boolean; armStale?: boolean; armsimStale?: boolean; cncsimStale?: boolean } = {}): Violation[] {
+export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", opts: { quick?: boolean; boardStale?: boolean; boardFailed?: boolean; chassisStale?: boolean; armStale?: boolean; armsimStale?: boolean; cncsimStale?: boolean } = {}): Violation[] {
 	const v: Violation[] = []
 	// A failed firmware-in-the-loop drive (docs/mechanics.md): the mechanics must change. "not run" (no QEMU, a stubbed
 	// run) wakes nobody: the report says "not proven in simulation". Not the firmware reviewer: the rover's firmware is
@@ -239,7 +239,7 @@ export function checkConsistency(c: ContractSnapshot, a: Artifacts, brief = "", 
 	// guess that the sensor was off the bus, and the next drive crawled at 0.09 m/s).
 	if (a.drive?.result === "fail")
 		v.push({ kind: "mech-drive", message: `the simulated drive failed: ${a.drive.reason}`, fields: ["mechanics"], affects: ["mechanics"] })
-	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...plugsWithoutEdge(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...supplyWiring(c), ...packVoltage(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...armPowerChecks(c), ...motionBriefChecks(c, brief))
+	v.push(...unconnectedParts(c), ...connectorsWithoutParts(c), ...plugsWithoutEdge(c), ...bootPinTaken(c), ...downloadPinLow(c), ...usbWakePinTaken(c), ...unreachableButtons(c), ...connectorClashes(c), ...connectorsOffEdge(c), ...pinnedBlocked(c), ...moduleEdgeBlocked(c), ...ledOnCathode(c), ...underratedRails(c), ...supplyWiring(c, { boardFailed: opts.boardFailed }), ...packVoltage(c), ...modelChecks(c), ...testChecks(c), ...fixtureChecks(c, a.board, a.testkit), ...caseChecks(c), ...builtFeatureChecks(c, a.enclosure), ...spaceChecks(c, opts), ...connectivityChecks(c), ...linkChecks(c), ...mechanicsChecks(c), ...armPowerChecks(c), ...motionBriefChecks(c, brief))
 	// A built chassis (not a stub) whose standoffs miss a board's mounting holes.
 	// The chassis built for an older contract disagrees until it's rebuilt: addressed to nobody meanwhile, as net-missing
 	// on a stale board (rover mock, 26 Nov 2026: it woke the mechanics agent at the revision before the rebuild).
@@ -769,7 +769,8 @@ export function unconnectedParts(c: ContractSnapshot): Violation[] {
 // - part-net-unknown: a Part.nets entry naming a pin the part lacks, or a rail the contract doesn't have.
 // - rail-unwired: a rail no two pads share (nothing feeds it, or nothing draws from it).
 // - rail-current-copper: a second rail too wide for a track while the one top-layer pour is taken (two layers).
-export function supplyWiring(c: ContractSnapshot): Violation[] {
+// boardFailed: the board's latest build failed (artifactFailures.board), so no layout exists to judge its plane widths.
+export function supplyWiring(c: ContractSnapshot, o: { boardFailed?: boolean } = {}): Violation[] {
 	const { parts = [], rails = [] } = c.values
 	// Parts on a supply pin (3V3, VDD, VCC) or a regulator with no 3V3 rail in the contract: the generator wires no supply
 	// net at all, and the board's net check (built against the same generator) can't see it. Real run 16 (Eurobot, 16 Nov
@@ -801,7 +802,10 @@ export function supplyWiring(c: ContractSnapshot): Violation[] {
 			v.push({ kind: "rail-unwired", message: `rail ${r.name} (${r.voltageV} V, ${r.loadMa} mA) reaches no two pads: nothing on the board is wired to it. A part whose supply pin isn't labelled ${r.name === "3V3" ? "3V3/VDD/VCC" : "by the rail"} (a numbered header pin, a power input) names it in its nets, e.g. { "2": "${r.name}" }`, fields: ["parts", "rails"], affects: ["architect"] })
 	// A 4-layer board's rail on its power plane (In2): each region's narrowest passage between its pads must take the rail's
 	// IPC-2221 width (lead-2, 26 Nov 2026: a rail whose pads sit far apart can get a thin region).
-	for (const r of powerPlaneRegions(c)) {
+	// Not while the board doesn't build: the regions are those of a layout that failed (real CNC run 3, 27 Nov 2026: every
+	// build failed placement, yet the plane check judged that layout, and the architect grew the board to 140×100 for
+	// copper on a board that never existed).
+	for (const r of o.boardFailed ? [] : powerPlaneRegions(c)) {
 		const need = supplyWidths(c).get(r.net)
 		if (need !== undefined && r.neckMm < need)
 			v.push({ kind: "track-width-narrow", message: `${r.net} needs ${need} mm of 1 oz copper for its peak (IPC-2221, 10 °C rise, an estimate), but its region of the power layer (In2) narrows to ${r.neckMm} mm between its pads: move its parts closer together, or give the board room`, fields: ["outline", "parts"], affects: ["architect"] })
