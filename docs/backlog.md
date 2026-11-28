@@ -871,3 +871,12 @@ Done: a rover's drive, an arm's pick-and-place and a grblHAL CNC's toolpath come
       firmware (Klipper, Marlin or RepRapFirmware) with its configuration generated from the contract. Safety: the heated
       bed's current and any mains-powered bed are checked like the CNC's spindle and e-stop. The simulation: a short
       G-code print path run by the printer firmware, drawn like the CNC's toolpath.
+
+## The board close-up: datasheet body sizes (bringup-lead-5, 28 Nov 2026)
+
+- [ ] **Catalog parts carry their body size.** The close-up now shapes a part without a 3D model by its package family
+      and marks it "*" (the user, 28 Nov 2026: "if we don't have 3d view of the component, should we add a placeholder
+      based on the suggested dimensions? … leave an asterisk"). Its size still comes from the courtyard, because board
+      parts in the catalog have no body dimensions (only motors' bodyMm in mechanics.json). Add `body: [L, W, H]` (mm,
+      from the datasheet) to catalog parts; closeup.ts then prefers it, and the "*" note says "drawn from its datasheet
+      size".
