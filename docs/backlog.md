@@ -912,3 +912,5 @@ Done: a rover's drive, an arm's pick-and-place and a grblHAL CNC's toolpath come
         machine around the model, not only the vision.
       - **Where training runs:** on the user's machine (their GPU) or a cloud GPU they approve and pay for; Bringup never
         hosts datasets or models (the edge-AI positioning).
+        The user (28 Nov 2026): "training can be done locally on users GPU, or cloud GPU. We might expand this idea when
+        we have more resources or creativity." So: local or cloud GPU for now; a richer training offer is later.
