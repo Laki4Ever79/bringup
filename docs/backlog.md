@@ -880,3 +880,35 @@ Done: a rover's drive, an arm's pick-and-place and a grblHAL CNC's toolpath come
       parts in the catalog have no body dimensions (only motors' bodyMm in mechanics.json). Add `body: [L, W, H]` (mm,
       from the datasheet) to catalog parts; closeup.ts then prefers it, and the "*" note says "drawn from its datasheet
       size".
+
+## A weeding robot, and AI/ML as a first-class part of the design (the user, 28 Nov 2026)
+
+- [ ] **A wheeled weeding robot, with the vision model it needs.** The user, verbatim: "Let's say we want to build a
+      wheeled weeding robot with all sensors and actuators necessary for it included into the build - would bringup be
+      able to tackle it? would it be able to suggest, help train or even train the computer vision model for weed
+      detection? Or would it find already available model or training data, or would it create simulated data in ros
+      and train on it? that is the next important step - AI/ML integration".
+      - **Today (assessment, 28 Nov):** the rover, its board, printed parts, firmware, ROS 2 package and simulated drive
+        exist; a bought compute board (Pi/Jetson) is a catalog part ("buy the brain, design the body"); the edge-AI work
+        (docs/edge-ai.md: the `model` field, the ml agent, py/quantize.py, `verify-model`, data-collection firmware) sizes
+        and verifies a small model on a microcontroller. Missing for a weeder: a camera path to the compute board, a
+        weeding actuator (a sprayer pump and valves, a stamping or rotating tool; a laser only with its own safety case),
+        outdoor parts (a larger frame of extrusion rather than printed plates, wheels for soil, an IP-rated case, a
+        bigger battery or solar), row following (RTK GNSS or vision), and a vision model on the compute board.
+      - **The model, in this order (each paid step only with the user's yes, per the output policy):**
+        1. *Find first:* public weed datasets and models (DeepWeeds, CropAndWeed, the Bonn sugar-beet set, OpenWeedLocator's
+           detectors, Roboflow Universe models), with their licences checked before use.
+        2. *Fit:* fine-tune a small detector (a YOLO-class model) on the found data plus the user's own photos; Bringup
+           chooses the model size from the compute board's budget (the edge-AI sizing, extended from microcontrollers to
+           Pi/Jetson: ONNX/TFLite/TensorRT), quantizes it, and measures its speed on the real or emulated target.
+        3. *Collect and label:* the robot's own firmware and ROS node record images in the field; labels are proposed by a
+           large vision model and confirmed by the user (Studio, paid).
+        4. *Simulate only to help:* rendered or simulated fields (ROS/MuJoCo scenes with plant models) add variety, but a
+           sim-only model is never shipped as the answer: the domain gap is stated, and real images decide.
+        5. *Wire it in:* the ROS 2 detection node, its topics to the actuator's driver, and a check that the detector's
+           frame rate and the robot's speed leave time to act on each weed.
+      - **Prior art to credit and learn from:** OpenWeedLocator (open-source camera weeding), FarmBot, and the commercial
+        weeders (Carbon Robotics' LaserWeeder, Naïo, ecoRobotix, Aigen). Ours would be the one that designs the whole
+        machine around the model, not only the vision.
+      - **Where training runs:** on the user's machine (their GPU) or a cloud GPU they approve and pay for; Bringup never
+        hosts datasets or models (the edge-AI positioning).
