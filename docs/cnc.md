@@ -327,3 +327,9 @@ Each failure on the way, with its general fix.
   (machine-fw.ts): the copy keeps the clone's installed libraries (only an earlier build's output is dropped), a build
   whose libraries are incomplete is retried once, and the first build's complete set seeds the clone (written beside
   and renamed in), so later builds download nothing.
+- 28 Nov, the FluidNC full mock (briefs/cnc-fluidnc.md, cc7a06ef): UNSETTLED at revision 12, 1 violation (machine-fw:
+  FluidNC failed in 7.8 s), the same signature as before: TMCStepper not installed, nothing compiled. Rerun alone in
+  that folder, TMCStepper 0.7.3 installed and the build ran. The cause is two PlatformIO builds at once (the app
+  firmware's and FluidNC's) on one ~/.platformio. Fix (run.ts): one PlatformIO build at a time in a run; every builder
+  whose tools include pio (BUILDER_TOOLS: firmware, drive, armsim, cncsim, machinefw) shares one BuildLock. Not yet
+  proven by a mock (after the weekly reset).

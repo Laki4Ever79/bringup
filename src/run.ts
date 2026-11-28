@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 import { OWNERS, type ContractSnapshot, type FieldName } from "./contract/types.ts"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
-import { buildsInFlight, createBoardBuilder, createArmBuilder, createArmSimBuilder, createCncSimBuilder, createMachineFwBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
+import { BuildLock, buildsInFlight, createBoardBuilder, createArmBuilder, createArmSimBuilder, createCncSimBuilder, createMachineFwBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createBomWriter } from "./agents/bom.ts"
@@ -33,7 +33,7 @@ import { createActivityParticipant } from "./agents/activity.ts"
 import { APPROVAL_TIMEOUT_MS, BringupState, emit, join as joinRuntime, sendMessage, startRuntime } from "./runtime.ts"
 import { makeEvent } from "./events.ts"
 import { detectEnvironment, type Env } from "./tools/env.ts"
-import { createStubBuilders, missingBuilders } from "./tools/stubs.ts"
+import { BUILDER_TOOLS, createStubBuilders, missingBuilders } from "./tools/stubs.ts"
 import { createBench, type Bench, type BenchOptions } from "./agents/bench.ts"
 import type { Bridge, BridgeHello } from "./tools/bench-bridge.ts"
 import { appendUsage } from "./inference/usage.ts"
@@ -231,7 +231,12 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
 		joinRuntime(bench)
 	}
-	const real = { board: () => createBoardBuilder(env), enclosure: () => createEnclosureBuilder(env), firmware: () => createFirmwareBuilder(env), testkit: () => createTestkitBuilder(env), chassis: () => createChassisBuilder(env), drive: () => createDriveBuilder(env), arm: () => createArmBuilder(env), armsim: () => createArmSimBuilder(env), cncsim: () => createCncSimBuilder(env), machinefw: () => createMachineFwBuilder(env) }
+	// One PlatformIO build at a time: two at once (the app firmware's and FluidNC's) share ~/.platformio's package handling,
+	// and the second failed installing its libraries (TMCStepper) before compiling anything (the CNC's FluidNC mock, 28
+	// Nov 2026: 7.8 s; alone it installs and builds). Every builder whose tools include pio (BUILDER_TOOLS) takes this lock.
+	const pioLock = new BuildLock()
+	const lockFor = (kind: string) => (BUILDER_TOOLS[kind]?.includes("pio") ? pioLock : undefined)
+	const real = { board: () => createBoardBuilder(env, lockFor("board")), enclosure: () => createEnclosureBuilder(env, lockFor("enclosure")), firmware: () => createFirmwareBuilder(env, lockFor("firmware")), testkit: () => createTestkitBuilder(env, lockFor("testkit")), chassis: () => createChassisBuilder(env, lockFor("chassis")), drive: () => createDriveBuilder(env, lockFor("drive")), arm: () => createArmBuilder(env, lockFor("arm")), armsim: () => createArmSimBuilder(env, lockFor("armsim")), cncsim: () => createCncSimBuilder(env, lockFor("cncsim")), machinefw: () => createMachineFwBuilder(env, lockFor("machinefw")) }
 	const stubbed = opts.noHardware ? Object.keys(real) : opts.stubMissing ? missingBuilders(env) : []
 	const builders = [...Object.entries(real).filter(([k]) => !stubbed.includes(k)).map(([, make]) => make()), ...(stubbed.length ? createStubBuilders(undefined, stubbed) : [])]
 	for (const b of builders) joinRuntime(b)
