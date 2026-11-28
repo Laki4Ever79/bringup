@@ -3357,7 +3357,10 @@ export function circuitFromContract(s: ContractSnapshot, opts: PlacementOptions 
 		const footprint = part ? footprintFor(part) : CONNECTOR_FOOTPRINT[c.kind]
 		const labels = part ? labelsFor(part, footprint) : ""
 		const { x, y } = connectorPosition(c, outline.widthMm, outline.heightMm, footprint)
-		lines.push(`<connector name=${q(c.ref)}${labels}${part ? mpnOf(part) : ""} footprint=${q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${edgeRotation(c, footprint)}} />`)
+		// A land pattern the generator draws itself (the DC-091-A250 jack, the XT60, a module) as JSX here too: written as its
+		// name, tscircuit's parser refused the board (real CNC run 3, 28 Nov 2026: 'Invalid footprint prop on connector "J2":
+		// "dc091a250"', 15 builds, the agents chasing a footprint stand-in five times).
+		lines.push(`<connector name=${q(c.ref)}${labels}${part ? mpnOf(part) : ""} footprint=${ownFootprint(footprint) ?? q(footprint)} pcbX={${x}} pcbY={${y}} pcbRotation={${edgeRotation(c, footprint)}} />`)
 		if (footprint === USBC_FOOTPRINT && opts.usbKeepouts) lines.push(...usbKeepouts(x, y, EDGE_ROTATION[c.edge]))
 	}
 
