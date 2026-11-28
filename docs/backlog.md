@@ -846,6 +846,12 @@ Done: a rover's drive, an arm's pick-and-place and a grblHAL CNC's toolpath come
 - [ ] **A FluidNC CNC's toolpath through QEMU** (lead-2: "a later item to note in the backlog, not now"). The CNC sim runs
       only grblHAL on an STM32F4 in Renode; both real CNC runs chose FluidNC on an ESP32, which Espressif's QEMU (already
       shipped by `setup sim`) can run. Same picture code: grblHAL's status reports become FluidNC's.
+- [ ] **Freerouting on the free tier, without Docker or KiCad** (option B, lead-2 28 Nov: "D now, B in the backlog"):
+      our own Specctra DSN writer from circuit.json and an SES reader into pcb_trace/pcb_via, local Java 25 (Freerouting
+      2.5.0 needs class file 69: Java 21 can't run it), the jar from `setup board`, 2 layers only (4 keep KiCad's path).
+      Measured 28 Nov on the eurobot board (placed only), Freerouting 2.5.0, -mp 20: KiCad's DSN 0 unrouted in 152 s;
+      tscircuit's `tsci export -f specctra-dsn` 54 unrouted in 148 s (same 29 nets, 172 pins against KiCad's 182). The
+      pinned CLI has no SES-to-circuit.json. Estimate 2-4 days. For now a board that needed it says so (option D).
 - [ ] **The CNC's DIR pins in Renode:** its GPIO model never shows grblHAL's direction pins in the register (bit-band and
       byte writes), so the toolpath's shape comes from grblHAL's status reports, with each axis's STEP pulses at the pins
       as the check. A model that shows DIR would let the pins alone draw it.

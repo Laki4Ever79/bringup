@@ -8,7 +8,7 @@ import { freeroutingAvailable, FREEROUTING_MISSING } from "../src/tools/freerout
 import { routingFailureReason } from "../src/contract/space.ts"
 
 // The free-tier rover's rev 11 (scratchpad rover-gndend-nofr), as the build reported it.
-const ROUTED_TOO_LONG = ["tscircuit build failed (exit 1):", "PCB trace is 10.51mm long, exceeding the 5mm maximum (.U6 > .VDDIO to .C9 > .pin1)", "Via unnamed via and trace .U6 > .VDD to .C8 > .pin1 are too close (clearance: 0.085mm, minimum: 0.1mm)", "Circuits  0 passed 1 failed", `Freerouting's layout: Freerouting: ${FREEROUTING_MISSING}`].join("\n")
+const ROUTED_TOO_LONG = ["tscircuit build failed (exit 1):", "PCB trace is 10.51mm long, exceeding the 5mm maximum (.U6 > .VDDIO to .C9 > .pin1)", "Via unnamed via and trace .U6 > .VDD to .C8 > .pin1 are too close (clearance: 0.085mm, minimum: 0.1mm)", "Circuits  0 passed 1 failed", `Freerouting's layout: ${FREEROUTING_MISSING}`].join("\n")
 // The CNC's 2-layer refusal before routing (scratchpad cnc81-gnd2).
 const BEFORE_ROUTING = "tscircuit build failed (placement check, no layout built):\nAutorouting was skipped because the 5mm maximum length for .C29 > .pin2 to net.GND cannot be satisfied: its endpoints are 13.07mm apart (8 additional violations). Every one of 20 layouts leaves a pin capacitor out of reach."
 const UNROUTED = "tscircuit build failed (exit 1):\nPort [U5.GND] is missing a trace\nCircuits  0 passed 1 failed"

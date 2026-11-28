@@ -24,7 +24,10 @@ const docker = (args: string[], timeoutMs: number): Promise<RunResult> => docker
 // Whether this machine can run Freerouting (its jar in tools/, and not switched off): without it the board build skips
 // the layouts it would route there, and the 4-layer retry on a trace-bound failure (board.ts).
 export const freeroutingAvailable = (root: string): boolean => process.env.BRINGUP_FREEROUTING !== "off" && existsSync(resolve(root, FREEROUTING_JAR))
-export const FREEROUTING_MISSING = `Freerouting isn't installed (${FREEROUTING_JAR})`
+// What the board needed and the one-line way out, for a build that ends without Freerouting (the free tier, an npx install:
+// Freerouting runs with Docker and its jar, which a git checkout's `npm run setup` installs; a local route through
+// tscircuit's own DSN left 54 connections unrouted on a board KiCad's DSN routes fully, 28 Nov 2026, so it isn't offered).
+export const FREEROUTING_MISSING = `this board needed Freerouting (tscircuit's router left connections unrouted at this size), which isn't on this machine (it runs with Docker and its jar, ${FREEROUTING_JAR}, from a git checkout's \`npm run setup\`): install Docker and rerun from a checkout, or accept a larger board (a change request such as "make the board 4 mm wider")`
 export async function freeroute(root: string, work: string, pcbRel: string, widths: Map<string, number> = new Map(), fourLayers = false): Promise<string | null> {
 	const jar = resolve(root, FREEROUTING_JAR)
 	// BRINGUP_FREEROUTING=off: as if the jar weren't there (the free tier's and CI's path: `bringup setup board` installs no

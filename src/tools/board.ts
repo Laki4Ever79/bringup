@@ -207,7 +207,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 		// No Freerouting here: its layout isn't built at all (it placed the board in tscircuit first, 12-13 s, only for the
 		// route to fail: about 50 s of a free-tier rover run, 27 Nov 2026).
 		if (!freeroutingAvailable(env.root)) {
-			freeroutingError = `Freerouting: ${FREEROUTING_MISSING}`
+			freeroutingError = FREEROUTING_MISSING
 			return
 		}
 		for (const placement of placements) {

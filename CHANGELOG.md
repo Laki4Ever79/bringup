@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.4 (unreleased)
+
+**See the design move, and see what a change did.** A robot's simulation, an arm's pick-and-place and a CNC's toolpath
+now come back as pictures and a GIF; one call shows the whole design in one image, another the design before and after
+a change. Tested from the npm package on Linux, macOS and Windows, simulation included.
+
+### For Claude Code and other MCP clients
+- `npx bringup-mcp add <claude-desktop|cursor|vscode|windsurf>` writes the server into that app's config (your other
+  servers kept, the old file saved as `.bak`, a file with comments left alone and the snippet printed; on Windows the
+  `cmd /c npx` form). Each client's file and entry are in docs/mcp.md.
+- `get_pictures` returns each simulation's verdict, and with `drive: true` pictures of it moving: a rover on its course
+  (from above with its path, frames following it, a GIF), an arm picking and placing cubes (pick, carry, drop, where each
+  cube landed, a GIF), a CNC's toolpath (on a millimetre grid with the bed, from the side, a GIF).
+- `get_pictures` with `overview: true`: the board, the assembly and the motion side by side in one image, the motion
+  labelled with its verdict.
+- `get_pictures` with `compare: true`: the design before and after the last change request (or any two revisions), the
+  panels that changed framed, and one line of what changed ("board 36×25 → 60×25 mm; U2 swapped; drive pass → pass").
+- `run_summary` lists each change request's outcome; one that changed nothing says **not done** and why.
+
+### Tools
+- `npx bringup-mcp setup sim`: MuJoCo and Espressif's QEMU for your system, pinned and checksum-checked, so a robot's own
+  firmware drives its physics model. On Linux and macOS QEMU needs a few system libraries; `setup sim` names them.
+
+### Designs and changes
+- A change request that can't be met is stated, never silent: the reason the design refused it is in the report and
+  the run summary (a rover already at its brief's width, asked for 2 cm wider).
+- The simulated CNC now runs a short program after its checks and records the toolpath, its length checked against the
+  step pulses counted at the pins.
+- Boards: a layout that leaves connections unconnected is never kept (4 layers are tried, else the run says so); without
+  Freerouting no time is spent on its layouts, and a board that needed it says so with the fix; a thermal pad joins its
+  chip's ground; 4-layer rails ride their own power-plane regions; generated footprint outlines no longer cross pads.
+- A run waits for a build still running at its time limit instead of cutting it off.
+
+### Fixes
+- Windows: the simulated robots boot (Espressif's Windows QEMU raised a stack-guard interrupt with nothing tripped; the
+  simulation firmware masks it).
+- A streamed run's last changes all reach the hosted page, not only the first 8 MB.
+
 ## 0.2.3 (27 Nov 2026)
 
 **Works on Linux, macOS and Windows.** Every release is now installed fresh from its npm package on all three systems
