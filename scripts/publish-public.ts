@@ -114,7 +114,8 @@ function main() {
 	const env = { GIT_INDEX_FILE: idx }
 	try {
 		git(["read-tree", ref], { env })
-		git(["rm", "--cached", "-q", "--pathspec-from-file=-"], { env, input: [...removed].join("\n") + "\n" })
+		// -f: the index is a throwaway built from the ref, so this checkout's own HEAD or files must never block it (they lag the ref when another session pushed meanwhile).
+		git(["rm", "--cached", "-f", "-q", "--pathspec-from-file=-"], { env, input: [...removed].join("\n") + "\n" })
 		const pkgBlob = git(["hash-object", "-w", "--stdin"], { input: publicPackageJson(git(["show", `${ref}:package.json`]), removed) })
 		git(["update-index", "--cacheinfo", `100644,${pkgBlob},package.json`], { env })
 		const tree = git(["write-tree"], { env })

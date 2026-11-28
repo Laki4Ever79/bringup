@@ -855,3 +855,19 @@ Done: a rover's drive, an arm's pick-and-place and a grblHAL CNC's toolpath come
 - [ ] **The CNC's DIR pins in Renode:** its GPIO model never shows grblHAL's direction pins in the register (bit-band and
       byte writes), so the toolpath's shape comes from grblHAL's status reports, with each axis's STEP pulses at the pins
       as the check. A model that shows DIR would let the pins alone draw it.
+
+## A 3D printer, designed whole, on the home page (the user, 28 Nov 2026)
+
+- [ ] **Design a 3D printer end to end and show it on the home page.** The user, verbatim: "add to backlog that I want
+      3D printer designed as well and we should put it on the homegpage". Do it like the CNC: a brief for a small
+      desktop printer (for example a 180 × 180 × 180 mm bed-slinger or CoreXY, 24 V, one hotend, a heated bed), the
+      scripted design first, then real runs only with the user's yes; every failure on the way fixed in code, until the
+      brief settles at 0 in one go. Then a gallery card and a place on the home page next to the rover, the arm and the
+      CNC. What it reuses: the CNC's machine kind (steppers and their drivers, limit switches and homing, rails and lead
+      screws or belts, the machine firmware build and the Renode toolpath simulation), the 15 Nov check of a Duet-like
+      controller board (above), and the motion-firmware MCU profiles (docs/mcu.md). What a printer adds: a hotend and a
+      heated bed (heater MOSFETs sized to their current, thermistor inputs, fans), thermal-runaway protection as a
+      required firmware setting and a check, an extruder motor, a frame and bed as printed and bought parts, and printer
+      firmware (Klipper, Marlin or RepRapFirmware) with its configuration generated from the contract. Safety: the heated
+      bed's current and any mains-powered bed are checked like the CNC's spindle and e-stop. The simulation: a short
+      G-code print path run by the printer firmware, drawn like the CNC's toolpath.
