@@ -4,9 +4,9 @@
 // tools/FluidNC, and the LittleFS image holding the board's config.yaml (FluidNC reads it from flash at boot). "not
 // run" when the clone or the platform isn't installed: FluidNC's pinned pioarduino platform is +2.86 GB (measured 27
 // Nov), pulled only for FluidNC designs (docs/backlog.md, the user's lean-dependencies item).
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import type { ContractSnapshot } from "../contract/types.ts"
 import { fluidncConfig } from "../cnc/fluidnc.ts"
 import { grblhalMcuProblem } from "../cnc/grblhal.ts"
@@ -53,6 +53,30 @@ export function pioSizes(out: string): { ramPct?: number; flashPct?: number } {
 // The first lines of a failed build that say why (a compiler error, a missing file), for the report and the owner.
 const firstError = (out: string) => (out.split("\n").filter((l) => /error:|Error \d|FAILED|No such file/.test(l)).slice(0, 4).join("; ") || out.trim().split("\n").slice(-3).join("; ")).slice(0, 600)
 
+// FluidNC's libraries, by the folder each installs into: its platformio.ini's lib_deps for the wifi env (TMCStepper
+// from the registry, two from GitHub). Builds that copied the clone without them downloaded all six every time, and
+// one download failing (TMCStepper, 28 Nov 2026, beside another PlatformIO build) failed the build in 11 s.
+export const FLUIDNC_LIBS = ["TMCStepper", "JsonStreamingParser", "AsyncTCP", "ESPAsyncWebServer", "Unity", "ESP8266 and ESP32 OLED driver for SSD1306 displays"]
+export const libdepsComplete = (dir: string) => FLUIDNC_LIBS.every((l) => existsSync(join(dir, l)))
+// The clone's copy for a build: everything but an earlier build's output (its installed libraries come along).
+export const fluidncCopyFilter = (p: string) => !/[/\\]\.pio[/\\]build$/.test(p)
+// A build's complete libraries into the clone, when the clone's are incomplete: written beside and renamed in, so a
+// build copying the clone meanwhile never sees half a folder.
+export function seedLibdeps(from: string, to: string): boolean {
+	if (!libdepsComplete(from) || libdepsComplete(to)) return false
+	const tmp = `${to}.seeding-${process.pid}`
+	try {
+		mkdirSync(dirname(to), { recursive: true })
+		cpSync(from, tmp, { recursive: true })
+		rmSync(to, { recursive: true, force: true })
+		renameSync(tmp, to)
+		return true
+	} catch {
+		rmSync(tmp, { recursive: true, force: true })
+		return false
+	}
+}
+
 export async function buildMachineFirmware(root: string, s: ContractSnapshot, dir: string): Promise<Omit<MachineFwArtifact, "revision" | "dir">> {
 	const fw = s.values.cnc?.firmware ?? null
 	const t0 = Date.now()
@@ -70,17 +94,22 @@ export async function buildMachineFirmware(root: string, s: ContractSnapshot, di
 		if (!config) return { firmware: fw, result: "failed", reason: "no config.yaml: the machine's pins or numbers are incomplete" }
 		const src = join(dir, "fluidnc-src")
 		mkdirSync(dir, { recursive: true })
-		// The clone with its .git (its version script reads it), without an earlier build.
-		cpSync(fluidncClone(root), src, { recursive: true, filter: (p) => !/[/\\]\.pio$/.test(p) })
+		// The clone with its .git (its version script reads it) and its installed libraries, without an earlier build.
+		cpSync(fluidncClone(root), src, { recursive: true, filter: fluidncCopyFilter })
 		mkdirSync(join(src, "FluidNC/data"), { recursive: true })
 		writeFileSync(join(src, "FluidNC/data/config.yaml"), config)
 		// Its build flags run `python git-version.py`: the venv's python first on PATH (there is no bare `python` beside it).
 		const env = { PATH: `${join(root, ".venv/bin")}:${process.env.PATH ?? ""}` }
 		const pio = join(root, ".venv/bin/pio")
-		const b = await run(pio, ["run", "-e", "wifi"], { cwd: src, timeoutMs: 30 * 60_000, env })
-		const out = b.stdout + b.stderr
 		const bin = join(src, ".pio/build/wifi/firmware.bin")
+		let b = await run(pio, ["run", "-e", "wifi"], { cwd: src, timeoutMs: 30 * 60_000, env })
+		// A library that failed to download (the registry, GitHub, another PlatformIO beside it) fails the build before
+		// it compiles anything: once more, while the libraries are incomplete.
+		if ((b.code !== 0 || !existsSync(bin)) && !libdepsComplete(join(src, ".pio/libdeps/wifi"))) b = await run(pio, ["run", "-e", "wifi"], { cwd: src, timeoutMs: 30 * 60_000, env })
+		const out = b.stdout + b.stderr
 		if (b.code !== 0 || !existsSync(bin)) return { firmware: fw, result: "failed", reason: firstError(out), ms: Date.now() - t0 }
+		// The first build's complete libraries go back into the clone: later builds copy them and download nothing.
+		seedLibdeps(join(src, ".pio/libdeps/wifi"), join(fluidncClone(root), ".pio/libdeps/wifi"))
 		const fs = await run(pio, ["run", "-e", "wifi", "-t", "buildfs"], { cwd: src, timeoutMs: 10 * 60_000, env })
 		const fsImage = join(src, ".pio/build/wifi/littlefs.bin")
 		return { firmware: fw, result: "built", ...pioSizes(out), ms: Date.now() - t0, image: bin, ...(fs.code === 0 && existsSync(fsImage) ? { fsImage } : {}) }

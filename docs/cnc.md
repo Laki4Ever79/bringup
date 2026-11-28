@@ -320,3 +320,10 @@ Each failure on the way, with its general fix.
   app firmware line is labelled as such on a CNC. Measured in test/machine-fw.int.test.ts: grblHAL 8 s, FluidNC about
   113 s (RAM 20.9 %, flash 97.1 %). One FluidNC attempt failed in 11 s while another PlatformIO build ran beside it
   (the reason wasn't captured): to watch in runs, where the app firmware builds alongside.
+- 28 Nov, the FluidNC build that failed in 11 s: its folder showed it stopped installing libraries (TMCStepper, from
+  PlatformIO's registry, missing; the other five there), before compiling anything. Every build copied the clone
+  without .pio, so it downloaded all six libraries again (two by cloning from GitHub) into a cache other PlatformIO
+  builds share, and one failed download failed the build. Even the clone's own install lacked TMCStepper. Fix
+  (machine-fw.ts): the copy keeps the clone's installed libraries (only an earlier build's output is dropped), a build
+  whose libraries are incomplete is retried once, and the first build's complete set seeds the clone (written beside
+  and renamed in), so later builds download nothing.

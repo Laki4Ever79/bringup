@@ -30,3 +30,21 @@ test("not run: grblHAL on the ESP32 names the fix; FluidNC without its platform 
 	assert.equal(f.result, "not run")
 	assert.match(f.reason!, /FluidNC's clone \(tools\/FluidNC\) or its pinned platform/)
 })
+
+test("FluidNC's copy keeps the clone's installed libraries and drops only an earlier build; complete libraries seed the clone once", async () => {
+	const { fluidncCopyFilter, libdepsComplete, seedLibdeps, FLUIDNC_LIBS } = await import("../src/tools/machine-fw.ts")
+	const { mkdirSync } = await import("node:fs")
+	assert.equal(fluidncCopyFilter("/x/FluidNC/.pio/build"), false)
+	assert.equal(fluidncCopyFilter("/x/FluidNC/.pio/libdeps"), true)
+	assert.equal(fluidncCopyFilter("/x/FluidNC/.pio"), true)
+	assert.equal(fluidncCopyFilter("/x/FluidNC/.git"), true)
+	const t = mkdtempSync(join(tmpdir(), "bringup-libdeps-"))
+	const built = join(t, "build", "libdeps"), clone = join(t, "clone", ".pio", "libdeps", "wifi")
+	for (const l of FLUIDNC_LIBS) mkdirSync(join(built, l), { recursive: true })
+	// The clone's install lacked TMCStepper (the registry download a build then made, and once failed).
+	for (const l of FLUIDNC_LIBS.filter((x) => x !== "TMCStepper")) mkdirSync(join(clone, l), { recursive: true })
+	assert.equal(libdepsComplete(clone), false)
+	assert.equal(seedLibdeps(built, clone), true)
+	assert.equal(libdepsComplete(clone), true)
+	assert.equal(seedLibdeps(built, clone), false, "once complete, left alone")
+})
