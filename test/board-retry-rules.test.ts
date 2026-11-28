@@ -41,3 +41,15 @@ test("the widening's reason names the bounded trace, or stays general", () => {
 	assert.equal(routingFailureReason(BEFORE_ROUTING), "a decoupling trace exceeded its 5 mm bound (.C29 > .pin2 to net.GND: 13.07 mm apart)")
 	assert.equal(routingFailureReason(UNROUTED), "tscircuit left pins without a trace")
 })
+
+// The CNC with C36 in reach (the measured pass, 27 Nov 2026): tscircuit's 2-layer layout left 11 connections unconnected
+// with 0 DRC errors, the search took it as clean, the 4-layer try didn't come out clean, and the 2-layer board was kept.
+test("a board left unconnected fails as a routing failure: its size recorded, the widening says why", async () => {
+	const { unrouted } = await import("../src/tools/board.ts")
+	const { ROUTING_FAILURE } = await import("../src/contract/space.ts")
+	const { fixtureContract } = await import("./fixture.ts")
+	const e = unrouted(fixtureContract(), 11, new Error("tscircuit build failed (exit 1):\nFreerouting left 3 connection(s) unrouted"))
+	assert.match(e.message, /^tscircuit build failed \(exit 1\):\nthe board failed to route: 11 connection\(s\) left unconnected; on 4 layers: /)
+	assert.ok(ROUTING_FAILURE.test(e.message) && sizeFailure(e.message), "the architect is asked for room, and the size is not offered again")
+	assert.equal(routingFailureReason(e.message), "11 connection(s) stayed unconnected, on 2 layers and on 4")
+})

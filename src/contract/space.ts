@@ -403,6 +403,8 @@ export function routingFailureReason(message: string): string {
 	if (routed) return `a decoupling trace exceeded its ${routed[2]} mm bound (${routed[3]}: ${routed[1]} mm)`
 	const before = /the ([\d.]+)mm maximum length for (.+?) cannot be satisfied: its endpoints are ([\d.]+)mm apart/.exec(message)
 	if (before) return `a decoupling trace exceeded its ${before[1]} mm bound (${before[2]}: ${before[3]} mm apart)`
+	const left = /the board failed to route: (\d+) connection\(s\) left unconnected/.exec(message)
+	if (left) return `${left[1]} connection(s) stayed unconnected, on 2 layers and on 4`
 	return "tscircuit left pins without a trace"
 }
 

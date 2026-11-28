@@ -61,21 +61,37 @@ export async function buildBoard(env: Env, dir: string, s: ContractSnapshot, rev
 		const message = String(error instanceof Error ? error.message : error)
 		const o = s.values.outline
 		if (twoLayers && retryOnFour(message, freeroutingAvailable(env.root))) {
+			let four: BoardArtifact | null = null
 			try {
-				return await onFour(`at 2 layers the board didn't route (rev ${revision}: ${message.split("\n").find((l) => /skipped|unrouted|Freerouting/.test(l))?.trim().slice(0, 160) ?? "build failed"})`)
+				four = await onFour(`at 2 layers the board didn't route (rev ${revision}: ${message.split("\n").find((l) => /skipped|unrouted|Freerouting/.test(l))?.trim().slice(0, 160) ?? "build failed"})`)
 			} catch {
 				// Not on 4 either: the size is the architect's question, as before.
+			}
+			// Built on 4 but left connections unconnected: not kept either (the CNC with C36 in reach, 28 Nov 2026: 11
+			// unconnected came back as its board after 1984 s).
+			if (four && (four.drc?.unconnected ?? 0) === 0) return four
+			if (four) {
+				if (o) recordRoutingFailure(s, o.widthMm, o.heightMm)
+				throw new Error(`${message}\non 4 layers the board failed to route: ${four.drc!.unconnected} connection(s) left unconnected`)
 			}
 		}
 		if (o && sizeFailure(message)) recordRoutingFailure(s, o.widthMm, o.heightMm)
 		throw error
 	}
-	// A 4-layer try that fails keeps the 2-layer board (its findings stand).
+	// A 4-layer try that fails keeps the 2-layer board (its findings stand): for rails short on copper only. A board with
+	// connections left unconnected is never kept (lead-2, 27 Nov 2026: the CNC kept a 2-layer board with 11 unconnected
+	// after 3227 s): it goes to 4 layers, where Freerouting routes what tscircuit left when the jar is there, and fails
+	// as a routing failure (the size recorded, the architect gives it room) when that doesn't route it either.
 	const orTwo = (p: Promise<BoardArtifact>) => p.catch(() => board)
 	if (twoLayers && board.narrowNets?.length)
 		return orTwo(onFour(`at 2 layers ${board.narrowNets.map((n) => `${n.net} reached its ${n.needMm} mm on ${Math.round(n.atWidthMm)} of ${Math.round(n.totalMm)} mm`).join(", ")} (rev ${revision}): the rails ride a power layer`))
-	if (twoLayers && (board.drc?.unconnected ?? 0) > 0)
-		return orTwo(onFour(`at 2 layers ${board.drc!.unconnected} connection(s) stayed unconnected (rev ${revision}): ground and the wide rails move to planes`))
+	if (twoLayers && (board.drc?.unconnected ?? 0) > 0) {
+		const left = board.drc!.unconnected
+		const four: BoardArtifact | Error = await onFour(`at 2 layers ${left} connection(s) stayed unconnected (rev ${revision}): ground and the wide rails move to planes`).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))))
+		if (!(four instanceof Error) && (four.drc?.unconnected ?? 0) === 0) return four
+		throw unrouted(s, left, four)
+	}
+	if (!twoLayers && (board.drc?.unconnected ?? 0) > 0) throw unrouted(s, board.drc!.unconnected, null)
 	const l = boardLayers(s)
 	return l.layers === 4 ? { ...board, layers: 4, ...(l.reason ? { layersReason: l.reason } : {}) } : board
 }
@@ -88,6 +104,18 @@ const PART_ERROR = /Could not find port for selector|has no ports/
 // reach) is the same cause tscircuit gives when it skips routing, and goes to the 4-layer retry and the bigger board the
 // same way: the CNC's GND-end bound (27 Nov 2026) failed outright once the check measured it.
 export const sizeFailure = (message: string): boolean => /^tscircuit build failed \((?:exit|placement check)/.test(message) && !PART_ERROR.test(message) && (ROUTING_FAILURE.test(message) || layoutSensitive(message))
+
+// A layout's faults: its DRC errors and the connections it left unconnected. Both keep the search going (before, only
+// errors did: a tscircuit layout with 11 unconnected and 0 errors ended the search as clean, and Freerouting never ran).
+const faults = (b: BoardArtifact) => (b.drc?.errors ?? 0) + (b.drc?.unconnected ?? 0)
+// A board that couldn't be routed in full, as a routing failure: the size is recorded, and the error says how many
+// connections were left and what the 4-layer try did.
+export function unrouted(s: ContractSnapshot, left: number, four: unknown): Error {
+	const o = s.values.outline
+	if (o) recordRoutingFailure(s, o.widthMm, o.heightMm)
+	const then = four === null ? "" : four instanceof Error ? `; on 4 layers: ${four.message.split("\n").slice(0, 3).join(" ")}` : `; on 4 layers ${(four as BoardArtifact).drc?.unconnected ?? "?"} still unconnected`
+	return new Error(`tscircuit build failed (exit 1):\nthe board failed to route: ${left} connection(s) left unconnected${then}`)
+}
 
 // Whether a failed 2-layer build is worth a 4-layer one: a size failure, except a trace past its length bound with no
 // Freerouting to route it. There the 4-layer retry has tscircuit's same bound and the same placement, and it never
@@ -188,7 +216,7 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 			try {
 				tried++
 				const board = await buildIn(env, work, s, revision, out, { ...placement, routingDisabled: true })
-				const errors = board.drc?.errors ?? 0
+				const errors = faults(board)
 				// Over a tscircuit board with DRC errors only when it has fewer (it keeps that board's debug-footprint note).
 				if (best && errors >= best.errors) { rmSync(out, { recursive: true, force: true }); return }
 				const note = best ? best.board.debugPortDropped : placement.debugPort === false ? droppedWhy(lastError) : undefined
@@ -261,10 +289,10 @@ async function buildBoardAt(env: Env, dir: string, s: ContractSnapshot, revision
 		try {
 			tried++
 			const board = await buildIn(env, work, s, revision, out, placement)
-			const errors = board.drc?.errors ?? 0
+			const errors = faults(board)
 			if (!best || errors < best.errors) {
 				if (best) rmSync(best.board.dir, { recursive: true, force: true })
-				const why: string = best ? `the board had ${best.errors} DRC error${best.errors === 1 ? "" : "s"} with it${best.board.drc?.firstError ? ` (${best.board.drc.firstError})` : ""}` : droppedWhy(lastError)
+				const why: string = best ? `the board had ${best.errors} DRC error${best.errors === 1 ? "" : "s"} or unconnected with it${best.board.drc?.firstError ? ` (${best.board.drc.firstError})` : ""}` : droppedWhy(lastError)
 				best = { board: dropped ? { ...board, debugPortDropped: why } : board, errors, placement }
 			} else rmSync(out, { recursive: true, force: true })
 			if (errors === 0) break

@@ -291,3 +291,11 @@ Each failure on the way, with its general fix.
     for the STM32F4: set fluidnc or move to the STM32F411"), and the sim reports not run;
   - the run's board build kept running after the run exited: run()'s children are now killed with their process group
     on exit.
+- 28 Nov, FluidNC built (gap 11's second half, after the user's yes to the download): its pinned pioarduino platform
+  55.03.39 installed for the wifi env in 3 min, +2.86 GB in ~/.platformio (the estimate was 1-2 GB: the precompiled
+  ESP-IDF libraries alone are 1.94 GB unpacked; Bringup's own espressif32@8.0.0 core is untouched). `pio run -e wifi`
+  in a copy of tools/FluidNC: SUCCESS in 87 s, RAM 20.9 %, flash 97.1 % of FluidNC's app partition. Two traps on the
+  way: its build flags call `python git-version.py` (no `python` outside the venv: put .venv/bin on PATH) and the
+  script needs the clone's .git. The board's config.yaml is not compiled in: FluidNC reads it from LittleFS
+  (FluidNC/data). Still open: the firmware builder building FluidNC for a fluidnc machine (today it builds Bringup's
+  Arduino product firmware and writes config.yaml beside it), and flashing a real ESP32.
