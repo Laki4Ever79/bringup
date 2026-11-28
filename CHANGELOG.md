@@ -4,7 +4,8 @@
 
 **See the design move, and see what a change did.** A robot's simulation, an arm's pick-and-place and a CNC's toolpath
 now come back as pictures and a GIF; one call shows the whole design in one image, another the design before and after
-a change. Tested from the npm package on Linux, macOS and Windows, simulation included.
+a change. Tested on Linux, macOS and Windows: the npm package through a newcomer's path, and the rover's simulated drive
+with its pictures and overview from the repository.
 
 ### For Claude Code and other MCP clients
 - `npx bringup-mcp add <claude-desktop|cursor|vscode|windsurf>` writes the server into that app's config (your other
@@ -16,12 +17,13 @@ a change. Tested from the npm package on Linux, macOS and Windows, simulation in
 - `get_pictures` with `overview: true`: the board, the assembly and the motion side by side in one image, the motion
   labelled with its verdict.
 - `get_pictures` with `compare: true`: the design before and after the last change request (or any two revisions), the
-  panels that changed framed, and one line of what changed ("board 36×25 → 60×25 mm; U2 swapped; drive pass → pass").
+  panels that changed framed, and one line of what changed (a rover made 2 cm narrower: "drive pass → pass; drive track:
+  110 → 90 mm, chassis plate 2: 96 → 76 mm").
 - `run_summary` lists each change request's outcome; one that changed nothing says **not done** and why.
 
 ### Tools
 - `npx bringup-mcp setup sim`: MuJoCo and Espressif's QEMU for your system, pinned and checksum-checked, so a robot's own
-  firmware drives its physics model. On Linux and macOS QEMU needs a few system libraries; `setup sim` names them.
+  firmware drives its physics model. On Linux and macOS QEMU needs a few system libraries; `setup sim` names them when they're missing (that message isn't covered by a test yet: CI installs them first).
 
 ### Designs and changes
 - A change request that can't be met is stated, never silent: the reason the design refused it is in the report and
@@ -30,7 +32,8 @@ a change. Tested from the npm package on Linux, macOS and Windows, simulation in
   step pulses counted at the pins.
 - Boards: a layout that leaves connections unconnected is never kept (4 layers are tried, else the run says so); without
   Freerouting no time is spent on its layouts, and a board that needed it says so with the fix; a thermal pad joins its
-  chip's ground; 4-layer rails ride their own power-plane regions; generated footprint outlines no longer cross pads.
+  chip's ground and 4-layer rails ride their own power-plane regions (both without an automated test yet); generated
+  footprint outlines no longer cross pads.
 - A run waits for a build still running at its time limit instead of cutting it off.
 
 ### Fixes
