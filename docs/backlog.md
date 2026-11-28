@@ -383,6 +383,14 @@ is a change to the firmware toolchain, not just the code.
       Done 17 Nov (bringup-board, adopt a4af9d5): 50×30 routes on tscircuit's first layout, DRC 0, 0 unconnected, 31 s.
       37×20 no longer places (the logger has gained parts: "no room for C5"); at its smallest by placement today, 47×16,
       it routes via Freerouting: 3 layouts, 88 s, DRC 0, 0 unconnected.
+- [ ] **C36 placement, with 4-layer Freerouting first on dense boards** (lead-2, 28 Nov 2026: "Park '4L Freerouting
+      first on dense boards' in the backlog with your numbers"). The placer can turn and move a capacitor whose GND end
+      is out of reach (within 2 mm; the CNC's C36 at 5.58 mm comes in), kept local on branch c36-place. Measured on the
+      CNC 81×66: without it, every 2-layer layout fails the reach check and the board goes straight to Freerouting on 4
+      layers (0/0, 740-876 s); with it, the reach check passes, tscircuit and Freerouting work its pin-pads placement and
+      leave 11 connections unconnected (1984-3227 s), so the CNC would fail instead of route. Arm and rover unchanged.
+      To ship it: on a dense board, try 4-layer Freerouting on the reach check's nearest layout before tscircuit's
+      2-layer layouts, and measure with `npm run board-pass`.
 - [ ] **Antenna keep-out:** Espressif recommends 15 mm clear around the module's antenna; the case leaves 2 mm. No
       ground copper is kept away from it yet either.
       Audit 17 Nov (bringup-system): the report names parts within 15 mm (b95dfb3, advisory); left: the layout, the case

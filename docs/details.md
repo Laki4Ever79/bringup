@@ -469,7 +469,7 @@ npm run board-pass -- --before out/board-pass/<before>.json # after: on your bra
 npm run board-pass -- --only cnc,arm                        # some cases only
 ```
 
-It builds four boards, one after another, with the real toolchain:
+It builds these boards, one after another, with the real toolchain:
 
 | Case | What is built |
 |---|---|
@@ -477,8 +477,9 @@ It builds four boards, one after another, with the real toolchain:
 | `arm` | the arm controller, 4 layers (`test/fixtures/arm-mock-rev14.json`), one board build |
 | `rover` | a whole mock rover run (`briefs/rover.md --mock`), Freerouting on |
 | `rover-nofr` | the same without Freerouting (`BRINGUP_FREEROUTING=off`, `BRINGUP_TOOLCHAIN=local`): the free tier's and CI's path, since `bringup setup board` installs no Freerouting |
+| `repeat49` | the free-tier rover's 49×29 mm contract (`test/fixtures/rover-nofr-49x29-rev13.json`) built 3 times without Freerouting: `ROUTED 3/3`, `VARIES 2/3` or `FAILED 0/3` |
 
-It takes about 30–40 minutes on a laptop. Each row of the table reads:
+It takes about 45 minutes on a laptop. Each row of the table reads:
 
 - **verdict**: `ROUTED` (with the router, and `4L` for 4 layers) or `DRC errors` for a board build; `settled rN` for a
   run (the contract revision it settled at: a higher N took more rounds), or why it didn't settle.
@@ -495,6 +496,32 @@ The DRC warnings by type follow the table, with the before values in brackets. R
 
 Two builds at once slow each other and both times mean nothing, so it refuses to start while another board build runs
 on the machine (a tscircuit build or a Freerouting container). `--force` starts it anyway.
+
+In CI (`.github/workflows/board-pass.yml`), `rover-nofr` and `cnc` run nightly on the public repo, and on demand on the
+private one, against the last passing run's result. The job fails when a case no longer settles or routes, or has more
+DRC errors or unconnected than before; a slower time is a warning in the summary only, since shared runners vary.
+
+### How the board build decides (what the measured passes showed, 27–28 Nov 2026)
+
+- **A layout's faults are its DRC errors plus its unconnected connections** (`faults()` in `src/tools/board.ts`). A
+  tscircuit layout with 0 errors and 11 unconnected once counted as clean, which ended the search before Freerouting
+  ran. A board that still has connections unconnected is never kept: it goes to 4 layers, and if those leave any it
+  fails as a routing failure. The size is recorded, and the architect is asked for room ("N connection(s) stayed
+  unconnected, on 2 layers and on 4").
+- **Without Freerouting** (no jar, or `BRINGUP_FREEROUTING=off`): a trace past its length bound gets no 4-layer retry
+  (`retryOnFour()`). That retry has tscircuit's same bound and the same placement, and it never built: 14 of 14 times over
+  six rover runs, 85 s each. No "Freerouting layout" is built either. With Freerouting, both stay: that is how the CNC
+  routes. The free-tier rover's board time went from 926 s to 342 s.
+- **A size that fails is a routing question, not a geometry one.** At 47 and 49 mm the rover's capacitors sit exactly
+  the same (straight 4.20 mm, Manhattan 5.94 mm to U6). 47 mm routed C9 at 14.3 mm, past its 5 mm bound, while 49 mm
+  routed it within the bound. Neither a distance check nor a count of nearby pads tells the two apart, so no such check
+  skips layouts before routing.
+- **tscircuit gives the same answer for the same contract on the same code.** `repeat49` routed 3 of 3, before and after
+  a change. The same contract building in one saved run and failing in another came from different code versions, not
+  from chance, so a failed size gets no re-roll.
+- **The widening says why**: "a decoupling trace exceeded its 5 mm bound (.U6 > .VDDIO to .C9 > .pin1: 10.51 mm)", or
+  the unconnected count above, instead of a general "tscircuit left pins without a trace" (`routingFailureReason()` in
+  `src/contract/space.ts`).
 
 ## Prior art and what's new
 

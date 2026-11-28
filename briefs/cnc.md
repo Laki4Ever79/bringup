@@ -15,7 +15,7 @@ through one power brick and takes its jobs over USB-C or Wi-Fi.
 - **Homes on limit switches** on every axis, and stops at once if a switch trips during a job.
 - **An emergency stop button** on the front that cuts the motors and the spindle in hardware.
 - **One 24 V mains brick**, sized with headroom for every motor and the spindle at once.
-- **Runs standard G-code** with open firmware (FluidNC or grblHAL) that the board's pin map configures, and **one USB-C
+- **Runs standard G-code on grblHAL** on an **STM32F411**, configured from the board's pin map, and **one USB-C
   cable** to program it and send jobs.
 
 ## Nice to have
