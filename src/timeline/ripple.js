@@ -282,7 +282,7 @@ export const PROBLEM = {
 	"part-pinned-blocked": "a part placed on the board page doesn't fit there",
 	"link-edge": "a cable connector is off the edge the system runs its cable from",
 }
-const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", "build:cncsim": "simulated machine", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", mechanics: "mechanics engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
+const WHO_SHORT = { architect: "architect", parts: "parts", firmware: "firmware agent", reviewer: "reviewer", "build:board": "board", "build:enclosure": "case", "build:firmware": "firmware", "build:testkit": "test kit", "build:cncsim": "simulated machine", "build:machinefw": "machine firmware", test: "test engineer", enclosure: "case designer", connectivity: "connectivity engineer", mechanics: "mechanics engineer", ml: "ML engineer", grounding: "datasheet check", consistency: "consistency check" }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 const and = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`)
 // What failed and why, in full: the plain words for the kind when there are some, then the check's own message.

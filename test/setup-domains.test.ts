@@ -113,7 +113,7 @@ test("a tool is found in the repo first, else in the tools home (BRINGUP_HOME)",
 })
 
 test("--stub-missing: only the builders whose tools are missing are stubbed", () => {
-	assert.deepEqual(missingBuilders({ tsci: "/t", python: null, pio: null }).sort(), ["arm", "armsim", "chassis", "cncsim", "drive", "enclosure", "firmware"])
+	assert.deepEqual(missingBuilders({ tsci: "/t", python: null, pio: null }).sort(), ["arm", "armsim", "chassis", "cncsim", "drive", "enclosure", "firmware", "machinefw"])
 	assert.deepEqual(missingBuilders({ tsci: null, python: "/p", pio: "/q" }).sort(), ["board", "testkit"])
 	assert.deepEqual(missingBuilders({ tsci: "/t", python: "/p", pio: "/q" }), [])
 })

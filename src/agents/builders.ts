@@ -23,11 +23,12 @@ import { buildEnclosure } from "../tools/enclosure.ts"
 import { buildFirmware } from "../tools/firmware.ts"
 import { cncSimReady, runCncSim, type CncSimArtifact } from "../tools/cnc-sim.ts"
 import { grblhalMcuProblem } from "../cnc/grblhal.ts"
+import { buildMachineFirmware, type MachineFwArtifact } from "../tools/machine-fw.ts"
 import { buildTestkit } from "../tools/testkit.ts"
 import type { Env } from "../tools/env.ts"
 import type { DrcSummary } from "../tools/drc.ts"
 
-type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact; arm: ArmBuildArtifact; armsim: ArmDriveArtifact & { stub?: true }; cncsim: CncSimArtifact }
+type ArtifactOf = { board: BoardArtifact; enclosure: EnclosureArtifact; firmware: FirmwareArtifact; testkit: TestkitArtifact; chassis: ChassisArtifact; drive: DriveArtifact; arm: ArmBuildArtifact; armsim: ArmDriveArtifact & { stub?: true }; cncsim: CncSimArtifact; machinefw: MachineFwArtifact & { stub?: true } }
 
 export interface BuildContext {
 	revision: number
@@ -41,7 +42,7 @@ export const BUILD_INPUTS = Object.fromEntries(Object.entries(BUILDS).map(([k, b
 // Artifacts a design has only when it asks for them: without the field the kind counts as current (nothing to build),
 // so it never holds a design from settling.
 export const OPTIONAL_KINDS = Object.fromEntries(Object.entries(BUILDS).filter(([, b]) => b.optional).map(([k, b]) => [k, b.optional])) as Partial<Record<ArtifactKind, FieldName>>
-export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive", "arm", "armsim", "cncsim"]
+export const ALL_KINDS: ArtifactKind[] = ["board", "enclosure", "firmware", "testkit", "chassis", "drive", "arm", "armsim", "cncsim", "machinefw"]
 
 // Experiment arm C only (src/experiment): builders sharing one lock take turns, so the same change can be timed with
 // its builds awaited one after another instead of concurrently. Runs never pass one.
@@ -329,6 +330,23 @@ export function createCncSimBuilder(env: Env, lock?: BuildLock): Human {
 			const r = runCncSim(env.root, snapshot, dir)
 			const failed = r.checks.filter((c) => !c.ok)
 			return { revision, dir, result: r.result, reason: failed.map((c) => `${c.name}: ${c.detail}`).join("; "), checks: r.checks, knownLimits: r.knownLimits, wallS: r.wallS }
+		},
+	})
+}
+
+// The firmware the CNC runs (src/tools/machine-fw.ts): grblHAL's board build or FluidNC's, from the contract. Its own
+// kind, so "firmware compiles" in the report no longer stands for a machine's firmware (Bringup's Arduino app does).
+export function createMachineFwBuilder(env: Env, lock?: BuildLock): Human {
+	return createBuilder({
+		kind: "machinefw",
+		lock,
+		inputs: BUILD_INPUTS.machinefw,
+		requires: BUILD_REQUIRES.machinefw,
+		notNeeded: cncNotNeeded,
+		build: async ({ dir, snapshot, revision }) => {
+			if (!env.pio) return { revision, dir, firmware: snapshot.values.cnc?.firmware ?? null, result: "not run", reason: "PlatformIO isn't installed: the machine's firmware isn't built" }
+			mkdirSync(dir, { recursive: true })
+			return { revision, dir, ...(await buildMachineFirmware(env.root, snapshot, dir)) }
 		},
 	})
 }

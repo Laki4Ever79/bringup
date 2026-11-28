@@ -48,4 +48,7 @@ export const BUILDS = {
 	// parts) and settings (cnc, cncTargets) runs in Renode: steps per motor, the e-stop, the stall stop, a hard limit. Only
 	// with a cnc field.
 	cncsim: { inputs: ["cnc", "cncTargets", "pins", "parts"], requires: ["cnc", "pins"], optional: "cnc" },
+	// The firmware the CNC runs (src/tools/machine-fw.ts): grblHAL's board build from the map, or FluidNC's build with
+	// the config.yaml in its LittleFS image, from the pins, the parts and the machine's numbers. Only with a cnc field.
+	machinefw: { inputs: ["cnc", "cncTargets", "pins", "parts"], requires: ["cnc", "pins"], optional: "cnc" },
 }

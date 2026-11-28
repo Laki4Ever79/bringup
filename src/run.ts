@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url"
 import { OWNERS, type ContractSnapshot, type FieldName } from "./contract/types.ts"
 import { checkConsistency, type Violation } from "./contract/consistency.ts"
 import { createChangeDesk } from "./change-control.ts"
-import { buildsInFlight, createBoardBuilder, createArmBuilder, createArmSimBuilder, createCncSimBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
+import { buildsInFlight, createBoardBuilder, createArmBuilder, createArmSimBuilder, createCncSimBuilder, createMachineFwBuilder, createChassisBuilder, createDriveBuilder, createEnclosureBuilder, createFirmwareBuilder, createTestkitBuilder } from "./agents/builders.ts"
 import { createConsistencyParticipant, MAX_REVISIONS, type Settlement } from "./agents/consistency.ts"
 import { createGroundingCheck } from "./agents/grounding-check.ts"
 import { createBomWriter } from "./agents/bom.ts"
@@ -231,7 +231,7 @@ export async function runDesign(opts: RunOptions): Promise<RunResult> {
 		bench = createBench({ ...(await opts.bench.open()), ...opts.bench.timings })
 		joinRuntime(bench)
 	}
-	const real = { board: () => createBoardBuilder(env), enclosure: () => createEnclosureBuilder(env), firmware: () => createFirmwareBuilder(env), testkit: () => createTestkitBuilder(env), chassis: () => createChassisBuilder(env), drive: () => createDriveBuilder(env), arm: () => createArmBuilder(env), armsim: () => createArmSimBuilder(env), cncsim: () => createCncSimBuilder(env) }
+	const real = { board: () => createBoardBuilder(env), enclosure: () => createEnclosureBuilder(env), firmware: () => createFirmwareBuilder(env), testkit: () => createTestkitBuilder(env), chassis: () => createChassisBuilder(env), drive: () => createDriveBuilder(env), arm: () => createArmBuilder(env), armsim: () => createArmSimBuilder(env), cncsim: () => createCncSimBuilder(env), machinefw: () => createMachineFwBuilder(env) }
 	const stubbed = opts.noHardware ? Object.keys(real) : opts.stubMissing ? missingBuilders(env) : []
 	const builders = [...Object.entries(real).filter(([k]) => !stubbed.includes(k)).map(([, make]) => make()), ...(stubbed.length ? createStubBuilders(undefined, stubbed) : [])]
 	for (const b of builders) joinRuntime(b)

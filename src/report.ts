@@ -32,6 +32,7 @@ import { changeRipples, readTrace } from "./runner/ripple.ts"
 import { mcuPinName } from "./mcu/pins.ts"
 import { simBackendFor } from "./mcu/sim.ts"
 import { cncSimLines } from "./tools/cnc-sim.ts"
+import { machineFwLines } from "./tools/machine-fw.ts"
 
 function counts(tracePath: string): Record<string, number> {
 	const c: Record<string, number> = {}
@@ -333,10 +334,11 @@ export function writeReport(outDir: string, s: BringupState, env: Env, settled: 
 		...(s.artifacts.board?.debugPortDropped ? [`- Debug footprint: left off this board, ${s.artifacts.board.debugPortDropped}. A bigger board or fewer parts brings it back; requirements.debugPort false makes it explicit`] : []),
 		enclosureMode(v) === "case" ? `- Enclosure: ${s.artifacts.enclosure?.stlPath ?? "not built"}` : `- Enclosure: none (requirements.enclosure "${enclosureMode(v)}")${enclosureMode(v) === "own" ? `; mechanical interface: ${writeInterface(outDir, snapshot, s.artifacts.board?.stepPath ?? null) ?? "not written (no outline yet)"}` : ""}`,
 		...printLines(s.artifacts.enclosure, stubbed),
-		`- Firmware: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
+		`- ${v.cnc ? "Bringup's app firmware (Arduino; not what the machine runs, see Machine firmware)" : "Firmware"}: ${!s.artifacts.firmware ? "not built" : isStub(s.artifacts.firmware) ? "stubbed (pins from the contract, not compiled)" : s.artifacts.firmware.ok ? "compiles" : "does NOT compile"}`,
 		...(v.model?.sensor === "microphone" && s.artifacts.firmware && !isStub(s.artifacts.firmware) ? [`- Data-collection firmware: \`npm run bringup -- collect-firmware ${outDir}\` builds it for this design's sensor path (docs/edge-ai.md)`] : []),
 		bootLine(join(outDir, "trace.jsonl"), env, stubbed, Boolean(v.mechanics && v.motion), s.artifacts.drive, v.parts),
 		simulationLine(outDir, env),
+		...machineFwLines(s.artifacts.machinefw),
 		...cncSimLines(s.artifacts.cncsim),
 		sourcingLine(join(outDir, "bom.json")),
 		...Object.entries(s.artifactFailures).map(([k, e]) => `- ${k} failed: ${String(e).split("\n")[0]}`),

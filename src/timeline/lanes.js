@@ -21,6 +21,7 @@ export const LANES = [
 	{ key: "build:arm", label: "Printed arm" },
 	{ key: "build:armsim", label: "Simulated pick-and-place" },
 	{ key: "build:cncsim", label: "Simulated machine" },
+	{ key: "build:machinefw", label: "Machine firmware" },
 	{ key: "build:testkit", label: "Test kit" },
 	{ key: "grounding", label: "Grounding check" },
 	{ key: "consistency", label: "Consistency" },
@@ -34,7 +35,7 @@ const ROBOT_LANES = new Set(["mechanics", "build:chassis", "build:drive"])
 // A robot arm's tiles: its mechanics engineer (who owns the arm field) and its printed parts.
 const ARM_LANES = new Set(["build:arm", "build:armsim"])
 // A CNC's simulated machine (grblHAL in Renode), once the design has a cnc field.
-const CNC_LANES = new Set(["build:cncsim"])
+const CNC_LANES = new Set(["build:cncsim", "build:machinefw"])
 const isCnc = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "cnc")
 const isArm = (events) => events.some((e) => e.type === "contract.changed" && e.payload?.field === "arm")
 const CASE_LANES = new Set(["enclosure", "build:enclosure"])

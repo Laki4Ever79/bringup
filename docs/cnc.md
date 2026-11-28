@@ -311,3 +311,12 @@ Each failure on the way, with its general fix.
   - the architect grew the board 100×80 → 140×100 for power-plane widths on a layout that never built: the plane check
     skips a board whose build failed;
   - the plan said "other kinds' 2-7 min": the estimate reads out/real-runs as well.
+- 28 Nov, the machine's own firmware as a build kind (machinefw; lead-2: "firmware compiles" must mean the machine's
+  firmware). Before, a CNC run built grblHAL only inside the simulation and FluidNC never, and the report's "Firmware:
+  compiles" was Bringup's Arduino app. Now src/tools/machine-fw.ts builds what the machine runs: grblHAL's STM32F4xx
+  board build from the generated map (env bringup_cnc), or FluidNC's wifi build in a copy of tools/FluidNC with the
+  board's config.yaml in its LittleFS image (FluidNC/data, `-t buildfs`). It reports RAM and flash, says "not run"
+  without the clone or platform, and sends a failed build to the architect and the mechanics engineer (machine-fw). The
+  app firmware line is labelled as such on a CNC. Measured in test/machine-fw.int.test.ts: grblHAL 8 s, FluidNC about
+  113 s (RAM 20.9 %, flash 97.1 %). One FluidNC attempt failed in 11 s while another PlatformIO build ran beside it
+  (the reason wasn't captured): to watch in runs, where the app firmware builds alongside.

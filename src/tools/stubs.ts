@@ -112,9 +112,10 @@ export function createStubBuilders(lock?: BuildLock, kinds?: readonly string[]):
 		createBuilder({ kind: "arm", inputs: BUILD_INPUTS.arm, requires: BUILD_REQUIRES.arm, notNeeded: armNotNeeded, lock, build: async ({ revision, dir }) => ({ ok: true as const, revision, dir: note(dir, "arm"), files: [], links: [], built: { poses: 0, pairs: 0, clashes: [], print: { ok: true, issues: [], notes: [], bedMm: [] } }, stub: true as const }) }),
 		createBuilder({ kind: "armsim", inputs: BUILD_INPUTS.armsim, requires: BUILD_REQUIRES.armsim, notNeeded: armNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "armsim"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", note: "", stub: true as const }) }),
 		createBuilder({ kind: "cncsim", inputs: BUILD_INPUTS.cncsim, requires: BUILD_REQUIRES.cncsim, notNeeded: cncNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "cncsim"), result: "not run" as const, reason: "hardware tools off (--no-hardware): not proven in simulation", checks: [], knownLimits: [], stub: true as const }) }),
+		createBuilder({ kind: "machinefw", inputs: BUILD_INPUTS.machinefw, requires: BUILD_REQUIRES.machinefw, notNeeded: cncNotNeeded, lock, build: async ({ revision, dir }) => ({ revision, dir: note(dir, "machinefw"), firmware: null, result: "not run" as const, reason: "hardware tools off (--no-hardware): the machine's firmware isn't built", stub: true as const }) }),
 		createBuilder({ kind: "testkit", inputs: BUILD_INPUTS.testkit, requires: BUILD_REQUIRES.testkit, derived: BUILD_DERIVED.testkit, lock, build: async ({ snapshot, revision, dir }) => stubTestkit(snapshot, revision, dir) }),
 	] as const
-	const order = ["board", "enclosure", "firmware", "chassis", "drive", "arm", "armsim", "cncsim", "testkit"]
+	const order = ["board", "enclosure", "firmware", "chassis", "drive", "arm", "armsim", "cncsim", "machinefw", "testkit"]
 	return kinds ? all.filter((_, i) => kinds.includes(order[i])) : [...all]
 }
 
@@ -129,6 +130,7 @@ export const BUILDER_TOOLS: Record<string, ("tsci" | "python" | "pio")[]> = {
 	drive: ["python", "pio"],
 	armsim: ["python", "pio"],
 	cncsim: ["pio"],
+	machinefw: ["pio"],
 }
 export function missingBuilders(env: { tsci: string | null; python: string | null; pio: string | null }): string[] {
 	return Object.entries(BUILDER_TOOLS).filter(([, tools]) => tools.some((t) => !env[t])).map(([k]) => k)
